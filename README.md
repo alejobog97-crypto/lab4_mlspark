@@ -1,465 +1,330 @@
-# Proyecto Final: Sistema Predictivo de Contratos Públicos con Spark ML
+# Taller 4: Machine Learning Escalable con Spark ML
 
-**Módulo 4: Machine Learning Escalable con Spark**
-**Diplomado en Gestión de Datos - Universidad Santo Tomás**
+**Diplomado en Gestion de Datos - Universidad Santo Tomas**
 
 ---
 
-## Descripción del Proyecto
+## Descripcion
 
-Este proyecto integra los conceptos del **Módulo 4 (MLSpark)** mediante la construcción de un sistema completo de Machine Learning distribuido que predice y analiza contratos públicos usando datos reales de **Colombia Compra Eficiente (SECOP II)**.
+Taller practico basado en **retos y ejercicios** para aprender Machine Learning distribuido con Spark ML y MLOps con MLflow. Usaras datos reales de contratos publicos de **Colombia Compra Eficiente (SECOP II)**.
 
-El proyecto evalúa las cuatro secciones del módulo:
-- **Sección 13**: Spark ML - Pipelines y Feature Engineering distribuido
-- **Sección 14**: Modelos de Regresión y Regularización
-- **Sección 15**: Optimización de Hiperparámetros y Validación Cruzada
-- **Sección 16**: MLOps - Tracking, Registro y Despliegue con MLflow
+Cada notebook presenta los conceptos teoricos y luego plantea retos con `TODO` que debes completar. Las soluciones sugeridas estan comentadas como referencia.
+
+**Secciones evaluadas**:
+- **Seccion 13**: Spark ML - Pipelines y Feature Engineering
+- **Seccion 14**: Modelos de Regresion y Regularizacion
+- **Seccion 15**: Optimizacion de Hiperparametros y Validacion Cruzada
+- **Seccion 16**: MLOps - Tracking, Registro y Despliegue con MLflow
 
 ---
 
 ## Objetivos de Aprendizaje
 
-Al completar este proyecto, habrás demostrado competencias en:
-
-1. **Machine Learning Distribuido**: Escalar algoritmos de ML a datasets masivos usando Spark MLlib
-2. **Pipelines de ML**: Construir flujos reproducibles con Transformers y Estimators
-3. **Feature Engineering**: Manipular variables categóricas y numéricas en entornos distribuidos
-4. **Modelos Predictivos**: Implementar regresión lineal y logística con regularización
-5. **Optimización**: Aplicar búsqueda en rejilla y validación cruzada para tuning
-6. **MLOps**: Gestionar el ciclo de vida completo del modelo con MLflow
+1. Escalar algoritmos de ML a datasets masivos usando Spark MLlib
+2. Construir Pipelines reproducibles con Transformers y Estimators
+3. Implementar regresion lineal, logistica y regularizacion
+4. Aplicar Grid Search y validacion cruzada para tuning
+5. Gestionar el ciclo de vida de modelos con MLflow
 
 ---
 
-## Dataset: SECOP II - Contratos Electrónicos
+## Dataset: SECOP II - Contratos Electronicos
 
 **Fuente**: [Datos Abiertos Colombia - SECOP II](https://www.datos.gov.co/Gastos-Gubernamentales/SECOP-II-Contratos-Electr-nicos/jbjy-vk9h/data)
 
-**Descripción**: Contratos electrónicos del Sistema Electrónico para la Contratación Pública de Colombia, actualizado diariamente por la Agencia Nacional de Contratación Pública.
+Contratos electronicos del Sistema Electronico para la Contratacion Publica de Colombia.
 
-**Campos clave**:
-- `Referencia del Contrato`: Identificador único
-- `Precio Base`: Valor del contrato (variable objetivo para regresión)
-- `Departamento`: Ubicación geográfica
-- `Tipo de Contrato`: Categoría del contrato
-- `Fecha de Firma`: Temporalidad
-- `Plazo de Ejecución`: Duración en días
-- `Proveedor Adjudicado`: Entidad contratista
-- `Estado del Contrato`: Activo, Liquidado, etc.
-
----
-
-## Casos de Uso de ML
-
-### 1. Regresión Lineal: Predicción del Valor del Contrato
-**Objetivo**: Predecir el `Precio Base` de un contrato en función de características como departamento, tipo de contrato, duración y entidad.
-
-**Técnicas aplicadas**:
-- VectorAssembler para preparación de features
-- Escalado con StandardScaler
-- Regularización Ridge (L2) y Lasso (L1)
-- ElasticNet para combinación L1+L2
-
-### 2. Clasificación Binaria: Predicción de Riesgo de Incumplimiento
-**Objetivo**: Clasificar contratos con alta probabilidad de incumplimiento basado en patrones históricos.
-
-**Variables**:
-- Duración del contrato
-- Monto
-- Historial del proveedor
-- Departamento
-
-**Modelo**: Regresión Logística con regularización
-
-### 3. Optimización de Hiperparámetros
-**Objetivo**: Encontrar la mejor combinación de hiperparámetros usando:
-- Grid Search (búsqueda exhaustiva)
-- Random Search (muestreo aleatorio)
-- Cross-Validation (validación k-fold)
-
-### 4. MLOps: Ciclo de Vida Completo
-**Objetivo**: Implementar prácticas profesionales de MLOps:
-- Tracking de experimentos con MLflow
-- Versionamiento de modelos
-- Registro en Model Registry
-- Despliegue para inferencia batch
+**Campos clave**: Referencia del Contrato, Precio Base, Departamento, Tipo de Contrato, Fecha de Firma, Plazo de Ejecucion, Proveedor Adjudicado, Estado del Contrato.
 
 ---
 
 ## Estructura del Proyecto
 
 ```
-proyecto_final_mlspark/
-├── README.md                           # Este archivo
-├── docker-compose.yml                  # Orquestación de servicios
-├── Dockerfile                          # Imagen personalizada de Spark
-├── requirements.txt                    # Dependencias Python
-├── .gitignore                          # Archivos ignorados en Git
+lab4_mlspark/
+├── README.md
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+├── .gitignore
 │
 ├── data/
-│   ├── raw/                            # Datos descargados de SECOP II
-│   └── processed/                      # Datos procesados por Spark
+│   ├── raw/
+│   └── processed/
 │
 ├── notebooks/
-│   ├── 01_ingesta_datos.py             # Descarga y carga inicial
-│   ├── 02_exploracion_eda.py           # Análisis exploratorio
-│   │
-│   ├── 03_feature_engineering.py       # Pipelines y VectorAssembler
-│   ├── 04_transformaciones.py          # Scalers, PCA, One-Hot Encoding
-│   │
-│   ├── 05_regresion_lineal.py          # Predicción de precios base
-│   ├── 06_regresion_logistica.py       # Clasificación de riesgos
-│   ├── 07_regularizacion.py            # Ridge, Lasso, ElasticNet
-│   │
-│   ├── 08_validacion_cruzada.py        # K-Fold Cross-Validation
-│   ├── 09_optimizacion_hiperparametros.py  # Grid/Random Search
-│   │
-│   ├── 10_mlflow_tracking.py           # Experimentos y métricas
-│   ├── 11_model_registry.py            # Versionamiento de modelos
-│   └── 12_inferencia_produccion.py     # Predicciones batch
+│   ├── 01_ingesta_datos.py
+│   ├── 02_exploracion_eda.py
+│   ├── 03_feature_engineering.py
+│   ├── 04_transformaciones.py
+│   ├── 05_regresion_lineal.py
+│   ├── 06_regresion_logistica.py
+│   ├── 07_regularizacion.py
+│   ├── 08_validacion_cruzada.py
+│   ├── 09_optimizacion_hiperparametros.py
+│   ├── 10_mlflow_tracking.py
+│   ├── 11_model_registry.py
+│   └── 12_inferencia_produccion.py
 │
 ├── src/
-│   ├── __init__.py                     # Módulo Python
-│   ├── data_loader.py                  # Utilidades de descarga
-│   ├── feature_utils.py                # Funciones de features
-│   └── model_trainer.py                # Entrenamiento modular
+│   ├── __init__.py
+│   ├── data_loader.py
+│   ├── feature_utils.py
+│   └── model_trainer.py
 │
-└── mlruns/                             # Tracking de MLflow
+└── mlruns/
 ```
+
+---
+
+## Guia de Notebooks y Retos
+
+### Fase 1: Ingesta y Exploracion
+
+#### Notebook 01: Ingesta de Datos
+**Archivo**: [notebooks/01_ingesta_datos.py](notebooks/01_ingesta_datos.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Configurar SparkSession conectada al cluster |
+| Reto 2 | Descargar datos desde la API de Datos Abiertos Colombia |
+| Reto 3 | Cargar datos en Spark y explorar el esquema |
+| Reto 4 | Seleccionar columnas clave para ML |
+| Reto 5 | Guardar en formato Parquet optimizado |
+
+#### Notebook 02: Analisis Exploratorio (EDA)
+**Archivo**: [notebooks/02_exploracion_eda.py](notebooks/02_exploracion_eda.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Calcular estadisticas descriptivas |
+| Reto 2 | Analizar valores nulos y decidir estrategia |
+| Reto 3 | Explorar la variable objetivo (valor de contratos) |
+| Reto 4 | Analizar distribucion por departamento |
+| Reto 5 | Explorar tipo de contrato y estado |
+| Reto 6 | Detectar outliers con metodo IQR |
+| Bonus | Analisis temporal de contratos |
+
+---
+
+### Fase 2: Feature Engineering (Seccion 13)
+
+#### Notebook 03: Pipelines y Feature Engineering
+**Archivo**: [notebooks/03_feature_engineering.py](notebooks/03_feature_engineering.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Seleccionar features categoricas y numericas |
+| Reto 2 | Implementar estrategia de limpieza de datos |
+| Reto 3 | Crear VectorAssembler para combinar features |
+| Reto 4 | Construir Pipeline completo (orden correcto de stages) |
+| Bonus 1 | Calcular dimension total de features post-encoding |
+| Bonus 2 | Analisis de varianza de features |
+
+#### Notebook 04: Transformaciones Avanzadas
+**Archivo**: [notebooks/04_transformaciones.py](notebooks/04_transformaciones.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Analizar por que normalizar (examinar escalas) |
+| Reto 2 | Comparar antes y despues de StandardScaler |
+| Reto 3 | Configurar PCA y elegir numero de componentes |
+| Reto 4 | Analizar varianza explicada por componente |
+| Reto 5 | Integrar todo en un Pipeline completo |
+| Bonus | Experimentar con diferentes valores de k en PCA |
+
+---
+
+### Fase 3: Modelos de Regresion (Seccion 14)
+
+#### Notebook 05: Regresion Lineal
+**Archivo**: [notebooks/05_regresion_lineal.py](notebooks/05_regresion_lineal.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Definir estrategia de train/test split |
+| Reto 2 | Configurar modelo de LinearRegression |
+| Reto 3 | Interpretar R² del modelo |
+| Reto 4 | Analizar calidad de predicciones y errores |
+| Reto 5 | Comparar train vs test para detectar overfitting |
+| Reto 6 | Analizar coeficientes del modelo |
+| Bonus 1 | Analisis de distribucion de residuos |
+| Bonus 2 | Feature importance aproximado |
+
+#### Notebook 06: Regresion Logistica
+**Archivo**: [notebooks/06_regresion_logistica.py](notebooks/06_regresion_logistica.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Crear variable objetivo binaria (definir criterio de riesgo) |
+| Reto 2 | Analizar balance de clases |
+| Reto 3 | Entender diferencia con regresion lineal |
+| Reto 4 | Configurar modelo con threshold apropiado |
+| Reto 5 | Interpretar probabilidades de prediccion |
+| Reto 6 | Evaluar con AUC-ROC, Precision, Recall, F1 |
+| Reto 7 | Construir e interpretar matriz de confusion |
+| Bonus 1 | Experimentar con diferentes thresholds |
+| Bonus 2 | Implementar curva ROC |
+
+#### Notebook 07: Regularizacion
+**Archivo**: [notebooks/07_regularizacion.py](notebooks/07_regularizacion.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Entender cuando y por que usar regularizacion |
+| Reto 2 | Configurar evaluador de modelos |
+| Reto 3 | Entrenar modelos con multiples combinaciones L1/L2/ElasticNet |
+| Reto 4 | Analizar resultados y encontrar mejor modelo |
+| Reto 5 | Comparar overfitting entre tipos de regularizacion |
+| Reto 6 | Entrenar y guardar modelo final |
+| Bonus | Visualizar efecto de lambda en coeficientes Lasso |
+
+---
+
+### Fase 4: Optimizacion de Hiperparametros (Seccion 15)
+
+#### Notebook 08: Validacion Cruzada
+**Archivo**: [notebooks/08_validacion_cruzada.py](notebooks/08_validacion_cruzada.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Entender concepto de K-Fold (diagrama mental) |
+| Reto 2 | Crear modelo base y evaluador |
+| Reto 3 | Construir ParamGrid de hiperparametros |
+| Reto 4 | Configurar CrossValidator (elegir K) |
+| Reto 5 | Ejecutar CV y analizar metricas por configuracion |
+| Reto 6 | Comparar CV vs simple train/test split |
+| Bonus | Experimentar con K=3, K=5, K=10 |
+
+#### Notebook 09: Optimizacion de Hiperparametros
+**Archivo**: [notebooks/09_optimizacion_hiperparametros.py](notebooks/09_optimizacion_hiperparametros.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Disenar grid de hiperparametros (escala logaritmica) |
+| Reto 2 | Implementar Grid Search + Cross-Validation |
+| Reto 3 | Implementar Train-Validation Split |
+| Reto 4 | Comparar ambas estrategias (rendimiento vs velocidad) |
+| Reto 5 | Seleccionar y guardar modelo final con hiperparametros |
+| Bonus | Refinar grid alrededor de mejores valores |
+
+---
+
+### Fase 5: MLOps y Produccion (Seccion 16)
+
+#### Notebook 10: MLflow Tracking
+**Archivo**: [notebooks/10_mlflow_tracking.py](notebooks/10_mlflow_tracking.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Configurar MLflow tracking server y experimento |
+| Reto 2 | Registrar experimento baseline con log_param/log_metric |
+| Reto 3 | Registrar multiples modelos (Ridge, Lasso, ElasticNet) |
+| Reto 4 | Explorar y comparar runs en MLflow UI |
+| Reto 5 | Agregar artefactos personalizados (reportes, graficos) |
+
+#### Notebook 11: Model Registry
+**Archivo**: [notebooks/11_model_registry.py](notebooks/11_model_registry.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Configurar MLflow y MlflowClient |
+| Reto 2 | Entrenar y registrar modelo v1 (baseline) |
+| Reto 3 | Entrenar y registrar modelo v2 (mejorado) |
+| Reto 4 | Gestionar stages: None → Staging → Production → Archived |
+| Reto 5 | Agregar metadata y descripcion al modelo |
+| Reto 6 | Cargar modelo desde Registry para prediccion |
+
+#### Notebook 12: Inferencia en Produccion
+**Archivo**: [notebooks/12_inferencia_produccion.py](notebooks/12_inferencia_produccion.py)
+
+| Reto | Descripcion |
+|------|-------------|
+| Reto 1 | Cargar modelo en Production desde MLflow Registry |
+| Reto 2 | Preparar datos nuevos para prediccion |
+| Reto 3 | Generar predicciones batch con timestamp |
+| Reto 4 | Monitorear predicciones (estadisticas, anomalias, rangos) |
+| Reto 5 | Guardar resultados en Parquet y CSV |
+| Reto 6 | Disenar pipeline de produccion automatizado |
+| Bonus | Simulacion de scoring continuo por lotes |
+
+---
+
+## Como Trabajar con los Notebooks
+
+1. **Lee la introduccion** de cada notebook para entender los conceptos
+2. **Completa los `TODO`** con tu codigo
+3. **Responde las preguntas** de reflexion en los comentarios
+4. **Descomenta las soluciones sugeridas** si te bloqueas (estan como referencia)
+5. **Ejecuta celda por celda** para verificar resultados
 
 ---
 
 ## Prerrequisitos
 
 - **Docker Desktop** instalado y corriendo
-- **Git** (para clonar el repositorio)
+- **Git** para clonar el repositorio
 - **Al menos 8 GB de RAM** disponible para Docker
-- **10 GB de espacio en disco** para datos y logs
+- **10 GB de espacio en disco**
 
 ---
 
-## Guía de Implementación
-
-### Fase 1: Infraestructura (30 min)
-
-#### 1.1 Clonar el Repositorio
+## Inicio Rapido
 
 ```bash
+# 1. Clonar repositorio
 git clone <url-del-repositorio>
 cd lab4_mlspark
-```
 
-#### 1.2 Levantar el Cluster Spark + MLflow
-
-```bash
+# 2. Levantar cluster
 docker-compose up --build -d
+
+# 3. Verificar servicios
+# Jupyter Lab:    http://localhost:8888 (password: spark)
+# Spark Master:   http://localhost:8080
+# MLflow UI:      http://localhost:5000
 ```
 
-#### 1.3 Verificar Servicios
-
-Accede a las siguientes URLs en tu navegador:
-
-- **Jupyter Lab**: [http://localhost:8888](http://localhost:8888) (contraseña: `spark`)
-- **Spark Master UI**: [http://localhost:8080](http://localhost:8080)
-- **MLflow UI**: [http://localhost:5000](http://localhost:5000)
-
 ---
 
-### Fase 2: Ingesta y Exploración (1 hora)
-
-#### Notebook 01: Ingesta de Datos
-
-**Objetivos**:
-- Descargar datos desde la API de Datos Abiertos Colombia
-- Cargar CSV en Spark DataFrame
-- Guardar en formato Parquet optimizado
-
-**Archivo**: [notebooks/01_ingesta_datos.py](notebooks/01_ingesta_datos.py)
-
-**Actividades**:
-1. Configurar SparkSession con Delta Lake
-2. Descargar dataset SECOP II usando API Socrata
-3. Explorar esquema inicial con `printSchema()`
-4. Persistir en `data/raw/` como Parquet particionado
-
-#### Notebook 02: EDA (Análisis Exploratorio)
-
-**Objetivos**:
-- Entender la distribución de las variables
-- Identificar valores nulos y outliers
-- Generar estadísticas descriptivas
-
-**Archivo**: [notebooks/02_exploracion_eda.py](notebooks/02_exploracion_eda.py)
-
-**Actividades**:
-1. Calcular estadísticas con `describe()`
-2. Analizar distribución de `Precio Base` por departamento
-3. Identificar contratos con datos faltantes
-4. Visualizar top 10 proveedores
-
----
-
-### Fase 3: Feature Engineering Distribuido (2 horas)
-
-> **Evalúa Sección 13**: Pipelines, VectorAssembler, Transformers
-
-#### Notebook 03: Pipelines y Feature Engineering
-
-**Objetivos**:
-- Construir un Pipeline de transformación end-to-end
-- Aplicar VectorAssembler para crear vectores de features
-- Manejar variables categóricas con StringIndexer y OneHotEncoder
-
-**Archivo**: [notebooks/03_feature_engineering.py](notebooks/03_feature_engineering.py)
-
-**Conceptos clave**:
-- **Transformer**: Aplica transformaciones (ej: `StringIndexer`)
-- **Estimator**: Aprende de los datos y genera un modelo (ej: `StandardScaler`)
-- **Pipeline**: Encadena múltiples stages secuencialmente
-
-**Actividades**:
-1. Crear `StringIndexer` para columnas categóricas (Departamento, Tipo Contrato)
-2. Aplicar `OneHotEncoder` para generar variables dummy
-3. Combinar features numéricas y categóricas con `VectorAssembler`
-4. Persistir el pipeline entrenado
-
-#### Notebook 04: Transformaciones Avanzadas
-
-**Objetivos**:
-- Escalar features numéricas con StandardScaler
-- Aplicar reducción de dimensionalidad con PCA
-- Manejar valores nulos con Imputer
-
-**Archivo**: [notebooks/04_transformaciones.py](notebooks/04_transformaciones.py)
-
-**Actividades**:
-1. Normalizar `Precio Base` y `Plazo Ejecución`
-2. Aplicar PCA para reducir dimensiones
-3. Crear un Pipeline completo: Indexing → Encoding → Scaling → PCA
-
----
-
-### Fase 4: Modelos de Regresión (3 horas)
-
-> **Evalúa Sección 14**: Regresión Lineal, Logística y Regularización
-
-#### Notebook 05: Regresión Lineal
-
-**Objetivos**:
-- Entrenar un modelo de regresión lineal para predecir `Precio Base`
-- Evaluar con métricas RMSE, MAE, R²
-- Interpretar coeficientes del modelo
-
-**Archivo**: [notebooks/05_regresion_lineal.py](notebooks/05_regresion_lineal.py)
-
-**Actividades**:
-1. Dividir datos en train/test (70/30)
-2. Entrenar `LinearRegression` de Spark ML
-3. Evaluar con `RegressionEvaluator`
-4. Analizar coeficientes y feature importance
-
-#### Notebook 06: Regresión Logística
-
-**Objetivos**:
-- Construir un clasificador de riesgo de incumplimiento
-- Evaluar con métricas de clasificación (AUC-ROC, Precision, Recall)
-- Analizar la curva ROC
-
-**Archivo**: [notebooks/06_regresion_logistica.py](notebooks/06_regresion_logistica.py)
-
-**Actividades**:
-1. Crear variable objetivo binaria: `riesgo_incumplimiento`
-2. Entrenar `LogisticRegression`
-3. Calcular AUC, F1-Score y Confusion Matrix
-4. Ajustar threshold de clasificación
-
-#### Notebook 07: Regularización
-
-**Objetivos**:
-- Prevenir overfitting con regularización L1 (Lasso), L2 (Ridge) y ElasticNet
-- Comparar desempeño de modelos regularizados
-- Seleccionar el mejor λ (lambda)
-
-**Archivo**: [notebooks/07_regularizacion.py](notebooks/07_regularizacion.py)
-
-**Conceptos clave**:
-- **Ridge (L2)**: Penaliza suma de cuadrados de coeficientes
-- **Lasso (L1)**: Penaliza valor absoluto, realiza selección de features
-- **ElasticNet**: Combina L1 y L2 con parámetro `elasticNetParam`
-
-**Actividades**:
-1. Entrenar modelos con diferentes valores de `regParam`
-2. Comparar RMSE en test set
-3. Visualizar impacto de λ en coeficientes
-4. Seleccionar mejor modelo
-
----
-
-### Fase 5: Optimización de Hiperparámetros (2 horas)
-
-> **Evalúa Sección 15**: Cross-Validation, Grid Search, Random Search
-
-#### Notebook 08: Validación Cruzada
-
-**Objetivos**:
-- Implementar K-Fold Cross-Validation
-- Evitar overfitting en la selección de hiperparámetros
-- Entender bias-variance tradeoff
-
-**Archivo**: [notebooks/08_validacion_cruzada.py](notebooks/08_validacion_cruzada.py)
-
-**Actividades**:
-1. Configurar `CrossValidator` con k=5
-2. Evaluar estabilidad de métricas entre folds
-3. Comparar train vs validation error
-
-#### Notebook 09: Optimización de Hiperparámetros
-
-**Objetivos**:
-- Aplicar Grid Search para búsqueda exhaustiva
-- Aplicar Random Search para espacios grandes
-- Comparar eficiencia y resultados
-
-**Archivo**: [notebooks/09_optimizacion_hiperparametros.py](notebooks/09_optimizacion_hiperparametros.py)
-
-**Hiperparámetros a optimizar**:
-- `regParam`: [0.01, 0.1, 1.0]
-- `elasticNetParam`: [0.0, 0.5, 1.0]
-- `maxIter`: [50, 100, 200]
-
-**Actividades**:
-1. Crear `ParamGridBuilder` con grid de búsqueda
-2. Ejecutar Grid Search con Cross-Validation
-3. Implementar Random Search (alternativa)
-4. Seleccionar mejor modelo y guardar hiperparámetros
-
----
-
-### Fase 6: MLOps y Producción (2 horas)
-
-> **Evalúa Sección 16**: Tracking, Registry, Deployment
-
-#### Notebook 10: MLflow Tracking
-
-**Objetivos**:
-- Registrar experimentos con métricas, parámetros y artefactos
-- Comparar múltiples runs en MLflow UI
-- Visualizar curvas de aprendizaje
-
-**Archivo**: [notebooks/10_mlflow_tracking.py](notebooks/10_mlflow_tracking.py)
-
-**Actividades**:
-1. Configurar `mlflow.spark.autolog()`
-2. Registrar hiperparámetros con `mlflow.log_param()`
-3. Registrar métricas con `mlflow.log_metric()`
-4. Guardar modelo con `mlflow.spark.log_model()`
-5. Comparar experimentos en [http://localhost:5000](http://localhost:5000)
-
-#### Notebook 11: Model Registry
-
-**Objetivos**:
-- Versionar modelos en MLflow Model Registry
-- Transicionar modelos entre etapas (Staging → Production)
-- Implementar versionamiento semántico
-
-**Archivo**: [notebooks/11_model_registry.py](notebooks/11_model_registry.py)
-
-**Actividades**:
-1. Registrar modelo en registry: `mlflow.register_model()`
-2. Crear versiones (v1, v2, etc.)
-3. Promover modelo a `Production`
-4. Archivar modelos obsoletos
-
-#### Notebook 12: Inferencia en Producción
-
-**Objetivos**:
-- Cargar modelo desde registry
-- Realizar predicciones batch sobre datos nuevos
-- Simular pipeline de producción
-
-**Archivo**: [notebooks/12_inferencia_produccion.py](notebooks/12_inferencia_produccion.py)
-
-**Actividades**:
-1. Cargar modelo desde `models:/nombre_modelo/Production`
-2. Aplicar transformaciones del pipeline
-3. Generar predicciones sobre nuevos contratos
-4. Guardar resultados en `data/processed/predictions/`
-
----
-
-## Evaluación del Proyecto
-
-El proyecto final se evalúa en función de:
-
-| Criterio | Peso | Descripción |
-|----------|------|-------------|
-| **Feature Engineering** | 25% | Construcción de pipelines, manejo de categóricas, escalado |
-| **Modelos de ML** | 25% | Implementación correcta de regresión lineal/logística con regularización |
-| **Optimización** | 20% | Aplicación de Grid Search y Cross-Validation |
-| **MLOps** | 20% | Tracking con MLflow, versionamiento, deployment |
-| **Documentación** | 10% | Claridad en notebooks, interpretación de resultados |
-
----
-
-## Retos Adicionales (Opcional)
-
-Para profundizar tu aprendizaje:
-
-1. **Reto 1**: Implementar un modelo de clasificación multiclase para predecir el `Tipo de Contrato`
-2. **Reto 2**: Crear un dashboard interactivo con visualizaciones de las predicciones
-3. **Reto 3**: Implementar detección de Data Drift entre train y test
-4. **Reto 4**: Automatizar el pipeline con Airflow o CI/CD
-
----
-
-## Recursos Adicionales
-
-### Documentación Oficial
-- [Spark MLlib Guide](https://spark.apache.org/docs/latest/ml-guide.html)
-- [MLflow Documentation](https://mlflow.org/docs/latest/index.html)
-- [Colombia Compra Eficiente - Datos Abiertos](https://www.colombiacompra.gov.co/transparencia/gestion-documental/datos-abiertos)
-
-### Material del Curso
-- [Sección 13: Spark ML](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_13.html)
-- [Sección 14: Regresión](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_14.html)
-- [Sección 15: Tuning](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_15.html)
-- [Sección 16: MLOps](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_16.html)
+## Evaluacion
+
+| Criterio | Peso | Notebooks |
+|----------|------|-----------|
+| **Feature Engineering** | 25% | 03, 04 |
+| **Modelos de ML** | 25% | 05, 06, 07 |
+| **Optimizacion** | 20% | 08, 09 |
+| **MLOps** | 20% | 10, 11, 12 |
+| **Reflexion y analisis** | 10% | Preguntas en todos los notebooks |
 
 ---
 
 ## Limpieza del Entorno
 
-Para detener y eliminar todos los contenedores:
-
 ```bash
+# Detener servicios
 docker-compose down
-```
 
-Para eliminar también los volúmenes (datos y logs):
-
-```bash
+# Eliminar datos y logs
 docker-compose down -v
-```
 
-Para reiniciar completamente el proyecto:
-
-```bash
+# Reinicio completo
 rm -rf data/processed/* mlruns/*
 docker-compose up --build -d
 ```
 
 ---
 
-## Soporte y Contacto
+## Recursos
 
-Si encuentras problemas durante el desarrollo del proyecto:
-
-1. Revisa los logs de Docker: `docker-compose logs -f`
-2. Verifica que los servicios estén corriendo: `docker-compose ps`
-3. Consulta la documentación oficial de Spark ML y MLflow
-4. Contacta al instructor del curso
+- [Spark MLlib Guide](https://spark.apache.org/docs/latest/ml-guide.html)
+- [MLflow Documentation](https://mlflow.org/docs/latest/index.html)
+- [SECOP II - Datos Abiertos](https://www.datos.gov.co/Gastos-Gubernamentales/SECOP-II-Contratos-Electr-nicos/jbjy-vk9h/data)
+- [Seccion 13: Spark ML](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_13.html)
+- [Seccion 14: Regresion](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_14.html)
+- [Seccion 15: Tuning](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_15.html)
+- [Seccion 16: MLOps](https://ustatisticaldatapulse.github.io/diplomado-gestion-datos/seccion_16.html)
 
 ---
 
-**Última actualización**: Enero 2026
-**Versión**: 1.0
-**Diplomado en Gestión de Datos - Universidad Santo Tomás**
+**Diplomado en Gestion de Datos - Universidad Santo Tomas**
