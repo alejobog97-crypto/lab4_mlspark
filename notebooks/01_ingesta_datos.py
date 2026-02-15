@@ -97,8 +97,6 @@ print(f"Columnas totales: {len(df_raw.columns)}")
 
 # %%
 # Seleccionar columnas clave para el análisis de ML
-# Nota: Los nombres de columnas pueden variar según la versión del dataset
-# Ajusta según las columnas disponibles
 
 columnas_clave = [
     "referencia_del_contrato",

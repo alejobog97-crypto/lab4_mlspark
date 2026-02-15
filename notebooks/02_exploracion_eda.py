@@ -31,6 +31,7 @@ spark = SparkSession.builder \
 
 print(f"Spark Version: {spark.version}")
 
+
 # %%
 # Cargar datos desde Parquet
 parquet_path = "/opt/spark-data/raw/secop_contratos.parquet"
@@ -39,6 +40,7 @@ print(f"Cargando datos desde: {parquet_path}")
 df = spark.read.parquet(parquet_path)
 print(f"Registros cargados: {df.count():,}")
 print(f"Columnas: {len(df.columns)}")
+
 
 # %%
 # Mostrar esquema
