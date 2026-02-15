@@ -33,6 +33,12 @@ data/raw/*.parquet
 data/processed/
 *.log
 
+# Raw / Lakehouse data
+data/raw/
+data/lakehouse/
+*.json
+*.parquet
+
 # MLflow
 mlruns/
 mlartifacts/
