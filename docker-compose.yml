@@ -45,7 +45,6 @@ services:
 
   # --- JUPYTER LAB ---
   
-  
   jupyter-lab:
     build: .
     container_name: jupyter-lab
@@ -96,4 +95,3 @@ services:
 networks:
   spark-network:
     driver: bridge
-

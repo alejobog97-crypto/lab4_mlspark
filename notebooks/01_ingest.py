@@ -10,10 +10,13 @@ import re
 from sodapy import Socrata
 from delta import configure_spark_with_delta_pip
 
+<<<<<<< HEAD
 # -----------------------------------------
 # Spark Session
 # -----------------------------------------
 
+=======
+>>>>>>> cd9313fb1db7585b8d65aa58c2dae74a8cd4db05
 builder = (
     SparkSession.builder
     .appName("SECOP_Lakehouse")
@@ -24,6 +27,7 @@ builder = (
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
+<<<<<<< HEAD
 
 print(f"Spark Version: {spark.version}")
 print(f"Spark Master: {spark.sparkContext.master}")
@@ -35,6 +39,23 @@ RAW_PATH = "/opt/spark-data/raw"
 BRONZE_PATH = "/opt/spark-data/lakehouse/bronze/secop"
 JSON_PATH = f"{RAW_PATH}/secop_contratos.json"
 
+=======
+# -----------------------------------------
+# Spark Session
+# -----------------------------------------
+
+
+print(f"Spark Version: {spark.version}")
+print(f"Spark Master: {spark.sparkContext.master}")
+
+# -----------------------------------------
+# Paths
+# -----------------------------------------
+RAW_PATH = "/app/data/raw"
+BRONZE_PATH = "/app/data/lakehouse/bronze/secop"
+JSON_PATH = f"{RAW_PATH}/secop_contratos.json"
+
+>>>>>>> cd9313fb1db7585b8d65aa58c2dae74a8cd4db05
 os.makedirs(RAW_PATH, exist_ok=True)
 
 # -----------------------------------------
@@ -75,6 +96,10 @@ print(f"Columnas: {len(df_raw.columns)}")
 
 # -----------------------------------------
 # Normalización de nombres de columnas
+<<<<<<< HEAD
+=======
+# (solo nombres, NO tipos)
+>>>>>>> cd9313fb1db7585b8d65aa58c2dae74a8cd4db05
 # -----------------------------------------
 def normalize_columns(df):
     for c in df.columns:
@@ -85,6 +110,7 @@ def normalize_columns(df):
 df_bronze = normalize_columns(df_raw)
 
 # -----------------------------------------
+<<<<<<< HEAD
 # Selección de columnas (MISMA SALIDA, MENOS RUIDO)
 # -----------------------------------------
 columnas_bronze = [
@@ -155,6 +181,9 @@ df_bronze = df_bronze.select(*columnas_bronze)
 
 # -----------------------------------------
 # Escritura Delta Bronze (MISMA SALIDA)
+=======
+# Escritura Delta Bronze
+>>>>>>> cd9313fb1db7585b8d65aa58c2dae74a8cd4db05
 # -----------------------------------------
 print("Escribiendo capa Bronze...")
 
