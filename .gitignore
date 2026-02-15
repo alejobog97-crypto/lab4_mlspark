@@ -1,17 +1,85 @@
-# Data
-data/
-*.json
-*.parquet
+############################
+# Python
+############################
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+############################
+# Build / packaging
+############################
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+.installed.cfg
+
+############################
+# Jupyter
+############################
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+############################
+# DATA (CRÍTICO)
+############################
+# Raw data (SECOP, CSV, JSON, Parquet)
+data/raw/**
+!data/raw/.gitkeep
+
+# Lakehouse (Delta / Bronze / Silver / Gold)
+data/lakehouse/**
+!data/lakehouse/.gitkeep
+
+# Delta internals
+_delta_log/
+**/_delta_log/
+part-*
 *.crc
 
-# Spark / ML
+############################
+# Spark
+############################
+spark-warehouse/
+metastore_db/
+derby.log
+*.log
+
+############################
+# MLflow
+############################
 mlruns/
-lakehouse/
+mlartifacts/
 
-# Python
-__pycache__/
-.ipynb_checkpoints/
-*.pyc
+############################
+# Docker
+############################
+.dockerignore
 
+############################
+# IDEs
+############################
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+############################
 # OS
+############################
 .DS_Store
+Thumbs.db
+
+############################
+# Env vars / secrets
+############################
+.env
+.env.local
