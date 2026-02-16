@@ -17,30 +17,36 @@ from pyspark.sql.functions import (
     col, count, sum as spark_sum, avg, min as spark_min,
     max as spark_max, stddev, isnan, when, isnull, desc
 )
+from delta import configure_spark_with_delta_pip
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 # %%
 # Configurar SparkSession
-spark = SparkSession.builder \
-    .appName("SECOP_EDA") \
-    .master("spark://spark-master:7077") \
-    .config("spark.executor.memory", "2g") \
-    .getOrCreate()
+builder = (
+    SparkSession.builder
+    .appName("SECOP_EDA")
+    .master("spark://spark-master:7077")
+    .config("spark.executor.memory", "2g")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+)
+
+spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
 print(f"Spark Version: {spark.version}")
 
-
 # %%
 # Cargar datos desde Parquet
-parquet_path = "/opt/spark-data/raw/secop_contratos.parquet"
-print(f"Cargando datos desde: {parquet_path}")
 
-df = spark.read.parquet(parquet_path)
+bronze_path = "/opt/spark-data/lakehouse/bronze/secop"
+print(f"Cargando datos desde Bronze: {bronze_path}")
+
+df = spark.read.format("delta").load(bronze_path)
+
 print(f"Registros cargados: {df.count():,}")
 print(f"Columnas: {len(df.columns)}")
-
 
 # %%
 # Mostrar esquema
@@ -112,44 +118,7 @@ if valor_cols:
     ).show()
 
 # %%
-# Análisis por Departamento
-dept_cols = [c for c in df.columns if 'departamento' in c.lower()]
-if dept_cols:
-    dept_col = dept_cols[0]
-    print(f"\n=== TOP 10 DEPARTAMENTOS POR NÚMERO DE CONTRATOS ===")
 
-    df_dept = df.groupBy(dept_col) \
-        .agg(
-            count("*").alias("num_contratos"),
-            spark_sum(col(valor_col + "_num")).alias("valor_total") if valor_cols else count("*").alias("valor_total")
-        ) \
-        .orderBy(desc("num_contratos")) \
-        .limit(10)
-
-    df_dept.show(truncate=False)
-
-    # Convertir a pandas para visualización
-    df_dept_pandas = df_dept.toPandas()
-
-    # Visualización
-    plt.figure(figsize=(12, 6))
-
-    plt.subplot(1, 2, 1)
-    plt.barh(df_dept_pandas[dept_col], df_dept_pandas['num_contratos'])
-    plt.xlabel('Número de Contratos')
-    plt.title('Top 10 Departamentos por Número de Contratos')
-    plt.gca().invert_yaxis()
-
-    if valor_cols:
-        plt.subplot(1, 2, 2)
-        plt.barh(df_dept_pandas[dept_col], df_dept_pandas['valor_total'] / 1e9)
-        plt.xlabel('Valor Total (Miles de Millones COP)')
-        plt.title('Top 10 Departamentos por Valor Total')
-        plt.gca().invert_yaxis()
-
-    plt.tight_layout()
-    plt.savefig('/opt/spark-data/processed/eda_departamentos.png', dpi=150, bbox_inches='tight')
-    print("\nGráfico guardado: /opt/spark-data/processed/eda_departamentos.png")
 
 # %%
 # Análisis por Tipo de Contrato

@@ -1,18 +1,22 @@
 ############################
 # Python
 ############################
+
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
 env/
 venv/
 ENV/
+.venv/
 
 ############################
 # Build / packaging
 ############################
+
 build/
 dist/
 *.egg-info/
@@ -23,6 +27,7 @@ wheels/
 ############################
 # Jupyter
 ############################
+
 .ipynb_checkpoints/
 */.ipynb_checkpoints/
 *.ipynb_checkpoints
@@ -30,9 +35,14 @@ wheels/
 ############################
 # DATA (CRÍTICO)
 ############################
-# Raw data (SECOP, CSV, JSON, Parquet)
+
+# Raw data (CSV, JSON, Parquet, etc.)
 data/raw/**
 !data/raw/.gitkeep
+
+# Procesados intermedios
+data/processed/**
+!data/processed/.gitkeep
 
 # Lakehouse (Delta / Bronze / Silver / Gold)
 data/lakehouse/**
@@ -43,43 +53,79 @@ _delta_log/
 **/_delta_log/
 part-*
 *.crc
+*.snappy.parquet
+*.parquet
 
 ############################
 # Spark
 ############################
+
 spark-warehouse/
 metastore_db/
 derby.log
-*.log
+
+# Spark checkpoints & temp
+spark-checkpoints/
+spark-events/
+*.eventlog
 
 ############################
-# MLflow
+# MLflow (MUY IMPORTANTE)
 ############################
+
+# Backend store
 mlruns/
-mlartifacts/
+mlruns/**
+
+# Artifact store
+mlflow-artifacts/
+mlflow-artifacts/**
+
+# Temporary DFS / tmp
+data/mlflow-tmp/
+data/mlflow-tmp/**
 
 ############################
 # Docker
 ############################
+
 .dockerignore
+docker-compose.override.yml
+
+# Docker volumes (si se crean locales)
+**/docker-data/
+**/volumes/
 
 ############################
 # IDEs
 ############################
+
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.history/
 
 ############################
 # OS
 ############################
+
 .DS_Store
 Thumbs.db
 
 ############################
 # Env vars / secrets
 ############################
+
 .env
 .env.local
+.env.*
+!.env.example
+
+############################
+# Logs
+############################
+
+*.log
+logs/

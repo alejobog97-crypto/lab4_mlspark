@@ -23,14 +23,22 @@ from pyspark.ml.feature import (
 )
 from pyspark.ml import Pipeline
 from pyspark.sql.functions import col, when, isnull
+from delta import configure_spark_with_delta_pip
 
 # %%
 # Configurar SparkSession
-spark = SparkSession.builder \
-    .appName("SECOP_FeatureEngineering") \
-    .master("spark://spark-master:7077") \
-    .config("spark.executor.memory", "2g") \
-    .getOrCreate()
+builder = (
+    SparkSession.builder
+    .appName("SECOP_EDA")
+    .master("spark://spark-master:7077")
+    .config("spark.executor.memory", "2g")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+)
+
+spark = configure_spark_with_delta_pip(builder).getOrCreate()
+
+print(f"Spark Version: {spark.version}")
 
 # %%
 # Cargar datos
@@ -53,26 +61,33 @@ for col_name in df.columns:
 # 2. Selecciona al menos 3 variables categóricas relevantes
 # 3. Selecciona al menos 2 variables numéricas relevantes
 # 4. Justifica tu selección con un comentario
+# Variables categóricas relevantes
 
-# %%
-# TODO: Define tus variables categóricas
-# Ejemplo: categorical_cols = ["departamento", "tipo_de_contrato", ...]
 categorical_cols = [
-    # TODO: Completa con tus columnas categóricas
+    "departamento",
+    "tipo_de_contrato",
+    "estado_contrato"
 ]
 
-# TODO: Define tus variables numéricas
-# Ejemplo: numeric_cols = ["plazo_de_ejec_del_contrato", ...]
+# Variables numéricas relevantes
 numeric_cols = [
-    # TODO: Completa con tus columnas numéricas
+    "plazo_de_ejecucion",
+    "valor_contrato_num"
 ]
 
-# Verificar qué columnas existen realmente
+# Verificar columnas existentes
 available_cat = [c for c in categorical_cols if c in df.columns]
 available_num = [c for c in numeric_cols if c in df.columns]
 
 print(f"Categóricas seleccionadas: {available_cat}")
 print(f"Numéricas seleccionadas: {available_num}")
+
+
+print(f"Categóricas seleccionadas: {available_cat}")
+print(f"Numéricas seleccionadas: {available_num}")
+
+#Categóricas: influyen fuertemente en el valor del contrato (territorio, tipo, estado)
+#Numéricas: capturan magnitud, duración o cantidades directamente relacionadas con el valor
 
 # %% [markdown]
 # ## RETO 2: Limpieza de Datos
@@ -87,11 +102,26 @@ print(f"Numéricas seleccionadas: {available_num}")
 # %%
 # TODO: Implementa tu estrategia de limpieza de datos
 # df_clean = ...
+# Reemplazar nulos en categóricas
+df_clean = df
+for c in available_cat:
+    df_clean = df_clean.withColumn(
+        c,
+        when(isnull(col(c)), "DESCONOCIDO").otherwise(col(c))
+    )
+
+# Eliminar filas con nulos en numéricas
+df_clean = df_clean.dropna(subset=available_num)
+
+print(f"Registros después de limpiar: {df_clean.count():,}")
 
 # SOLUCIÓN SUGERIDA (descomenta y adapta):
 # df_clean = df.dropna(subset=available_cat + available_num)
 
 print(f"Registros después de limpiar: {df_clean.count():,}")
+
+#Categóricas → "DESCONOCIDO"
+#Numéricas → eliminar nulos (evita sesgo fuerte sin imputar mal)
 
 # %% [markdown]
 # ## PASO 1: StringIndexer para Variables Categóricas
@@ -105,9 +135,18 @@ print(f"Registros después de limpiar: {df_clean.count():,}")
 # Recuerda usar handleInvalid="keep" para manejar valores no vistos en test
 
 indexers = [
-    # TODO: Completa aquí
-    # StringIndexer(inputCol=???, outputCol=???, handleInvalid="keep")
+    StringIndexer(
+        inputCol=c,
+        outputCol=f"{c}_idx",
+        handleInvalid="keep"
+    )
+    for c in available_cat
 ]
+
+print("StringIndexers creados:")
+for idx in indexers:
+    print(f"  - {idx.getInputCol()} -> {idx.getOutputCol()}")
+
 
 print("StringIndexers creados:")
 for idx in indexers:
@@ -124,9 +163,17 @@ for idx in indexers:
 # Pista: La columna de entrada debe ser la salida del StringIndexer (_idx)
 
 encoders = [
-    # TODO: Completa aquí
-    # OneHotEncoder(inputCol=???, outputCol=???)
+    OneHotEncoder(
+        inputCol=f"{c}_idx",
+        outputCol=f"{c}_vec"
+    )
+    for c in available_cat
 ]
+
+print("\nOneHotEncoders creados:")
+for enc in encoders:
+    print(f"  - {enc.getInputCol()} -> {enc.getOutputCol()}")
+
 
 print("\nOneHotEncoders creados:")
 for enc in encoders:
@@ -146,9 +193,19 @@ for enc in encoders:
 #   1. Variables numéricas originales (available_num)
 #   2. Variables categóricas codificadas (con sufijo "_vec")
 
-feature_cols = [
-    # TODO: Completa la lista de columnas a combinar
-]
+feature_cols = (
+    available_num +
+    [f"{c}_vec" for c in available_cat]
+)
+
+assembler = VectorAssembler(
+    inputCols=feature_cols,
+    outputCol="features_raw"
+)
+
+print(f"\nVectorAssembler combinará {len(feature_cols)} features:")
+print(feature_cols)
+
 
 assembler = VectorAssembler(
     inputCols=feature_cols,
@@ -170,9 +227,18 @@ print(feature_cols)
 # TODO: Construye la lista de stages del pipeline
 # Orden correcto: indexers → encoders → assembler
 
-pipeline_stages = [
-    # TODO: Completa aquí
-]
+pipeline_stages = (
+    indexers +
+    encoders +
+    [assembler]
+)
+
+pipeline = Pipeline(stages=pipeline_stages)
+
+print(f"\nPipeline con {len(pipeline_stages)} stages:")
+for i, stage in enumerate(pipeline_stages):
+    print(f"  Stage {i+1}: {type(stage).__name__}")
+
 
 pipeline = Pipeline(stages=pipeline_stages)
 
@@ -218,15 +284,25 @@ print(f"Dimensión del vector de features: {len(sample_features)}")
 # %%
 # TODO: Calcula cuántas features hay por cada variable categórica
 # Pista: Usa df_clean.select("columna").distinct().count()
-
+total_cat_features = 0
 for cat_col in available_cat:
-    num_categorias = df_clean.select(cat_col).distinct().count()
-    print(f"{cat_col}: {num_categorias} categorías únicas")
+    n = df_clean.select(cat_col).distinct().count()
+    print(f"{cat_col}: {n} categorías únicas")
+    total_cat_features += n
+
+total_features = len(available_num) + total_cat_features
+
+print(f"\nTotal features esperadas:")
+print(f"Numéricas: {len(available_num)}")
+print(f"Categóricas codificadas: {total_cat_features}")
+print(f"TOTAL: {total_features}")
+print(f"Vector real: {len(sample_features)}")
 
 # TODO: Suma total de features = numéricas + (categóricas codificadas)
 # ¿Coincide con len(sample_features)?
+#Si
 
-# %% [markdown]
+
 # ## RETO BONUS 2: Feature Importance Manual
 #
 # **Objetivo**: Analizar la distribución de valores en el vector de features
@@ -236,24 +312,30 @@ for cat_col in available_cat:
 # 2. Convierte el vector de features a una matriz de Pandas
 # 3. Calcula la varianza de cada feature
 # 4. Identifica las top 5 features con mayor varianza
+import numpy as np
+import pandas as pd
+
+sample_df = (
+    df_transformed
+    .select("features_raw")
+    .sample(0.01, seed=42)
+    .limit(1000)
+    .toPandas()
+)
+
+features_matrix = np.array(
+    [row["features_raw"].toArray() for _, row in sample_df.iterrows()]
+)
+
+variances = np.var(features_matrix, axis=0)
+top_5_idx = np.argsort(variances)[-5:][::-1]
+
+print("\nTop 5 features con mayor varianza:")
+for idx in top_5_idx:
+    print(f"  Feature {idx}: varianza = {variances[idx]:.4f}")
 
 # %%
 # TODO: Implementa el análisis de varianza de features
-# Pista: Usa .toPandas() y numpy para calcular varianza
-
-# CÓDIGO SUGERIDO (descomentar y completar):
-# import pandas as pd
-# import numpy as np
-#
-# sample_df = df_transformed.select("features_raw").sample(0.01).limit(1000).toPandas()
-# features_matrix = np.array([row['features_raw'].toArray() for row in sample_df])
-#
-# variances = np.var(features_matrix, axis=0)
-# top_5_idx = np.argsort(variances)[-5:]
-#
-# print("Top 5 features con mayor varianza:")
-# for idx in top_5_idx:
-#     print(f"  Feature {idx}: varianza = {variances[idx]:.2f}")
 
 # %%
 # Guardar pipeline entrenado
@@ -280,12 +362,21 @@ print(f"✓ Dataset transformado guardado en: {output_path}")
 #
 # 4. **¿Qué ventaja tiene guardar el pipeline_model en lugar del DataFrame transformado?**
 
-# %%
 # TODO: Escribe tus respuestas aquí como comentarios
 # 1. Pipeline:
+# Permite reproducibilidad, evita data leakage y asegura el mismo flujo
+# de transformaciones en entrenamiento e inferencia.
+
 # 2. Orden de transformaciones:
+# OneHotEncoder necesita índices numéricos; sin StringIndexer fallaría.
+
 # 3. StandardScaler:
+# Cuando se usan modelos sensibles a escala (regresión, SVM, KMeans).
+
 # 4. Guardar pipeline:
+# Permite aplicar exactamente las mismas transformaciones a nuevos datos
+# sin reentrenar ni reescribir lógica.
+
 
 # %%
 print("\n" + "="*60)
