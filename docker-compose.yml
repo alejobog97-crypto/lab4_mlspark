@@ -1,30 +1,26 @@
 name: proyecto-mlspark
 
 services:
-
-  # --------------------------------------------------
-  # SPARK MASTER
-  # --------------------------------------------------
+  # --- SPARK MASTER ---
   spark-master:
     build: .
     container_name: spark-master
     hostname: spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
-      - "8080:8080"
-      - "7077:7077"
+      - "8080:8080"  # Spark Master Web UI
+      - "7077:7077"  # Spark Master Port
     environment:
       - SPARK_NO_DAEMONIZE=true
     volumes:
       - ./data:/opt/spark-data
       - ./notebooks:/opt/spark-notebooks
       - ./src:/opt/spark-apps
+      - ./mlruns:/opt/mlflow/mlruns
     networks:
       - spark-network
 
-  # --------------------------------------------------
-  # SPARK WORKER
-  # --------------------------------------------------
+  # --- SPARK WORKER ---
   spark-worker:
     build: .
     container_name: spark-worker
@@ -40,63 +36,57 @@ services:
       - ./data:/opt/spark-data
       - ./notebooks:/opt/spark-notebooks
       - ./src:/opt/spark-apps
+      - ./mlruns:/opt/mlflow/mlruns
     networks:
       - spark-network
 
-  # --------------------------------------------------
-  # MLFLOW SERVER (FILESYSTEM BACKEND – RECOMENDADO)
-  # --------------------------------------------------
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:v2.10.2
-    container_name: mlflow-server
-    user: root  # <--- Agrega esto para evitar problemas de permisos iniciales
-    ports:
-      - "5000:5000"
-    volumes:
-      - ./mlruns:/opt/mlflow/mlruns
-      - ./data:/opt/spark-data
-    environment:
-      - MLFLOW_HOME=/mlruns # <--- Define el home explícitamente
-    command: >
-      mlflow server
-      --host 0.0.0.0
-      --port 5000
-      --backend-store-uri file:///opt/mlflow/mlruns
-      --default-artifact-root file:///opt/mlflow/mlruns
-      --serve-artifacts
-    networks:
-      - spark-network
-    
-  # --------------------------------------------------
-  # JUPYTER LAB
-  # --------------------------------------------------
+  # --- JUPYTER LAB ---
   jupyter-lab:
     build: .
     container_name: jupyter-lab
     hostname: jupyter
     ports:
-      - "8888:8888"
-      - "4040:4040"
+      - "8989:8888"  # Jupyter Lab
+      - "4040:4040"  # Spark Application UI
     depends_on:
       - spark-master
       - mlflow
     environment:
       - SPARK_MASTER_URL=spark://spark-master:7077
       - MLFLOW_TRACKING_URI=http://mlflow:5000
-      - MLFLOW_SPARK_TMP_DIR=/tmp/mlflow
-    user: root  
     command: >
-      bash -c "mkdir -p /tmp/mlflow && chmod 777 /tmp/mlflow && 
-      jupyter lab --ip=0.0.0.0 --port=8888
-      --no-browser --allow-root
-      --NotebookApp.token='spark'
+      bash -c "jupyter lab --ip=0.0.0.0 --port=8888 --no-browser
+      --allow-root --NotebookApp.token='spark'
       --NotebookApp.password=''
       --notebook-dir=/opt/spark-notebooks"
     volumes:
-      - ./mlruns:/opt/mlflow/mlruns
       - ./data:/opt/spark-data
       - ./notebooks:/opt/spark-notebooks
       - ./src:/opt/spark-apps
+      - ./mlruns:/opt/mlflow/mlruns
+    networks:
+      - spark-network
+
+  # --- MLFLOW SERVER ---
+  # --- MLFLOW SERVER ---
+  mlflow:
+    build: .
+    container_name: mlflow-server
+    hostname: mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      # Cambiamos file:// por sqlite://
+      - MLFLOW_BACKEND_STORE_URI=sqlite:////opt/mlflow/mlruns/mlflow.db
+      - MLFLOW_DEFAULT_ARTIFACT_ROOT=/opt/mlflow/mlruns
+    command: >
+      mlflow server
+      --host 0.0.0.0
+      --port 5000
+      --backend-store-uri sqlite:////opt/mlflow/mlruns/mlflow.db
+      --default-artifact-root /opt/mlflow/mlruns
+    volumes:
+      - ./mlruns:/opt/mlflow/mlruns
     networks:
       - spark-network
 
