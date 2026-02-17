@@ -1,22 +1,7 @@
-# %% [markdown]
-# # Notebook 08: Validación Cruzada (K-Fold)
-#
-# **Sección 15 - Tuning**: Cross-validation para evitar overfitting
-#
-# **Objetivo**: Implementar K-Fold Cross-Validation
-#
-# ## Conceptos clave:
-# - Divide datos en K folds (subconjuntos)
-# - Entrena K veces, usando diferente fold como validación
-# - Promedia métricas para obtener estimación robusta
-#
-# ## Actividades:
-# 1. Entender el concepto de K-Fold
-# 2. Configurar CrossValidator en Spark ML
-# 3. Combinar con ParamGrid para búsqueda de hiperparámetros
-# 4. Analizar resultados
+# ============================================================
+# NOTEBOOK 08: Validación Cruzada (K-Fold)
+# ============================================================
 
-# %%
 from pyspark.sql import SparkSession
 from pyspark.ml.regression import LinearRegression
 from pyspark.ml.evaluation import RegressionEvaluator
@@ -24,27 +9,35 @@ from pyspark.sql.functions import when, col
 from pyspark.sql.functions import abs as spark_abs, col
 from pyspark.ml.feature import StandardScaler, PCA, VectorAssembler
 from pyspark.ml import Pipeline, PipelineModel
+from pyspark.ml.tuning import ParamGridBuilder
+from pyspark.ml.tuning import CrossValidator
 from delta import configure_spark_with_delta_pip
 from pyspark.ml.feature import VectorAssembler
 import numpy as np
+import time
 
-# %%
-# Configurar SparkSession
+# ------------------------------------------------------------
+# Inicialización de Spark
+# ------------------------------------------------------------
+
 builder = (
     SparkSession.builder
-    .appName("SECOP_EDA")
+    .appName("SECOP_Feature_Engineering")
     .master("spark://spark-master:7077")
-    .config("spark.executor.memory", "2g")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
 )
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
-print(f"Spark Version: {spark.version}")
+print("✓ Spark inicializado correctamente")
+print(f"  - Spark Version : {spark.version}")
+print(f"  - Spark Master  : {spark.sparkContext.master}")
 
-# %%
-# Cargar datos
+# ------------------------------------------------------------
+# Carga de datos
+# ------------------------------------------------------------
+
 df = spark.read.parquet("/opt/spark-data/processed/secop_ml_ready.parquet")
 df = df.withColumnRenamed("valor_del_contrato_num", "label") \
        .withColumnRenamed("features_pca", "features") \
@@ -55,83 +48,145 @@ train, test = df.randomSplit([0.8, 0.2], seed=42)
 print(f"Train: {train.count():,}")
 print(f"Test: {test.count():,}")
 
-# %%
-# RETO 1: Entender K-Fold Cross-Validation
-#
-# Supongamos K = 5
+# ------------------------------------------------------------
+# RETO 1: ENTENDER K-FOLD CROSS-VALIDATION
+# ------------------------------------------------------------
 
-# 1. ¿En cuántos subconjuntos se dividen los datos de train?
-# → En 5 subconjuntos (folds) del mismo tamaño (aprox.).
+print("\n" + "-"*60)
+print("RETO 1: ENTENDER K-FOLD CROSS-VALIDATION")
+print("-"*60)
 
-# 2. ¿Cuántos modelos se entrenan en total?
-# → Se entrenan 5 modelos.
-#   En cada iteración, uno de los folds actúa como validación
-#   y los otros 4 como entrenamiento.
+K = 5
 
-# 3. ¿Qué porcentaje de datos se usa para validación en cada iteración?
-# → 1/K del total de los datos de entrenamiento.
-# → Para K=5: 20% validación y 80% entrenamiento en cada iteración.
+print(f"\nSuposición del ejercicio: K = {K}")
 
-# 4. ¿Qué métrica se reporta al final?
-# → El promedio (y a veces la desviación estándar) de la métrica
-#   evaluada en cada fold (por ejemplo: RMSE promedio).
+print(
+    "\nPregunta 1:\n"
+    "¿En cuántos subconjuntos se dividen los datos de entrenamiento?"
+)
+print(
+    f"Respuesta:\n"
+    f"→ En {K} subconjuntos (folds) de tamaño aproximadamente igual."
+)
 
-# ¿Por qué K-Fold es mejor que un simple train/test split?
-#
-# - Reduce la dependencia de una sola partición aleatoria
-# - Usa todos los datos tanto para entrenamiento como para validación
-# - Produce métricas más estables y confiables
-# - Detecta mejor overfitting y underfitting
-# - Es especialmente útil cuando el dataset no es muy grande
+print(
+    "\nPregunta 2:\n"
+    "¿Cuántos modelos se entrenan en total?"
+)
+print(
+    "Respuesta:\n"
+    f"→ Se entrenan {K} modelos.\n"
+    "  En cada iteración:\n"
+    "  • 1 fold se usa como validación\n"
+    f"  • {K-1} folds se usan como entrenamiento"
+)
 
+print(
+    "\nPregunta 3:\n"
+    "¿Qué porcentaje de datos se usa para validación en cada iteración?"
+)
+print(
+    "Respuesta:\n"
+    f"→ 1/K del total de los datos de entrenamiento.\n"
+    f"→ Para K = {K}: 20% validación y 80% entrenamiento en cada iteración."
+)
 
-# %%
-# RETO 2: Crear el Modelo Base y Evaluador
-#
-# Objetivo:
-# - Definir un modelo base de regresión lineal
-# - Definir un evaluador para comparar modelos
+print(
+    "\nPregunta 4:\n"
+    "¿Qué métrica se reporta al final del proceso?"
+)
+print(
+    "Respuesta:\n"
+    "→ El promedio de la métrica evaluada en cada fold\n"
+    "  (y opcionalmente su desviación estándar).\n"
+    "→ Ejemplo: RMSE promedio de los 5 folds."
+)
 
-from pyspark.ml.regression import LinearRegression
-from pyspark.ml.evaluation import RegressionEvaluator
+print(
+    "\nPregunta clave:\n"
+    "¿Por qué K-Fold Cross-Validation es mejor que un simple train/test split?"
+)
 
-# Modelo base de Regresión Lineal (sin regularización explícita)
+print(
+    "\nRespuesta:\n"
+    "- Reduce la dependencia de una sola partición aleatoria.\n"
+    "- Usa todos los datos tanto para entrenamiento como para validación.\n"
+    "- Produce métricas más estables y confiables.\n"
+    "- Detecta mejor overfitting y underfitting.\n"
+    "- Es especialmente útil cuando el dataset no es muy grande."
+)
+
+# ------------------------------------------------------------
+# RETO 2: CREAR EL MODELO BASE Y EL EVALUADOR
+# ------------------------------------------------------------
+
+print("\n" + "-"*60)
+print("RETO 2: CREAR EL MODELO BASE Y EL EVALUADOR")
+print("-"*60)
+
+print(
+    "\nObjetivo del reto:\n"
+    "- Definir un modelo base de regresión lineal\n"
+    "- Definir un evaluador consistente para comparar modelos"
+)
+
+# Modelo base de regresión lineal (baseline)
 lr = LinearRegression(
     featuresCol="features",
     labelCol="label",
     maxIter=100
 )
 
-print("✓ Modelo base LinearRegression creado")
-print(f"  featuresCol: {lr.getFeaturesCol()}")
-print(f"  labelCol: {lr.getLabelCol()}")
-print(f"  maxIter: {lr.getMaxIter()}")
+print("\n✓ Modelo base LinearRegression creado")
+print(f"  • featuresCol: {lr.getFeaturesCol()}")
+print(f"  • labelCol:    {lr.getLabelCol()}")
+print(f"  • maxIter:     {lr.getMaxIter()}")
 
-# Evaluador del modelo
-# Usamos RMSE porque penaliza más los errores grandes
+# Evaluador
 evaluator = RegressionEvaluator(
     labelCol="label",
     predictionCol="prediction",
     metricName="rmse"
 )
 
-print("✓ Evaluador configurado")
-print("  Métrica: RMSE")
+print("\n✓ Evaluador configurado correctamente")
+print("  • Métrica seleccionada: RMSE")
 
-# Reflexión (comentario para el notebook):
-#
-# - RMSE es útil cuando los errores grandes son costosos (ej. contratos de alto valor)
-# - MAE podría usarse si se quiere tratar todos los errores por igual
-# - R² es complementario, pero no siempre suficiente para comparar modelos
+print(
+    "\nJustificación de la métrica RMSE:\n"
+    "- Penaliza más los errores grandes.\n"
+    "- Es especialmente relevante cuando errores grandes\n"
+    "  implican alto impacto financiero (ej. contratos grandes).\n"
+    "- Mantiene las mismas unidades de la variable objetivo,\n"
+    "  lo que facilita interpretación para negocio."
+)
 
-# %%
-# RETO 3: Construir el ParamGrid
-#
-# Objetivo:
-# - Definir combinaciones de hiperparámetros para Cross-Validation
-# - Explorar distintos niveles y tipos de regularización
+print(
+    "\nReflexión adicional sobre métricas:\n"
+    "- Usaría MAE si:\n"
+    "  • Todos los errores tienen el mismo impacto.\n"
+    "  • Quiero robustez frente a outliers.\n\n"
+    "- Usaría R² si:\n"
+    "  • Quiero comparar capacidad explicativa entre modelos.\n"
+    "  • El objetivo es más analítico que predictivo.\n\n"
+    "Conclusión:\n"
+    "✔️ RMSE es una excelente métrica principal.\n"
+    "✔️ MAE y R² son métricas complementarias útiles."
+)
 
-from pyspark.ml.tuning import ParamGridBuilder
+# ------------------------------------------------------------
+# RETO 3: CONSTRUIR EL PARAMGRID
+# ------------------------------------------------------------
+
+print("\n" + "-"*60)
+print("RETO 3: CONSTRUIR EL PARAMGRID")
+print("-"*60)
+
+print(
+    "\nObjetivo del reto:\n"
+    "- Definir combinaciones de hiperparámetros para Cross-Validation\n"
+    "- Explorar distintos niveles y tipos de regularización"
+)
 
 # Definición del grid de hiperparámetros
 param_grid = (
@@ -144,41 +199,55 @@ param_grid = (
     # 0.5 = ElasticNet
     # 1.0 = Lasso (L1)
     .addGrid(lr.elasticNetParam, [0.0, 0.5, 1.0])
-    
     .build()
 )
 
 # Número de combinaciones
 num_combinations = len(param_grid)
-print(f"Combinaciones en el grid: {num_combinations}")
+print(f"\n✓ Combinaciones de hiperparámetros en el grid: {num_combinations}")
 
-# Si usamos K-Fold Cross-Validation
+# Cross-Validation con K-Fold
 K = 5
 total_models = num_combinations * K
-print(f"Total de modelos a entrenar: {total_models}")
 
-# Explicación (comentario para el notebook):
-#
-# - 3 valores de regParam × 3 valores de elasticNetParam = 9 combinaciones
-# - Con K = 5 folds:
-#   👉 9 × 5 = 45 modelos entrenados en total
-#
-# Esto explica por qué Cross-Validation puede ser computacionalmente costoso
+print(f"✓ Número de folds (K): {K}")
+print(f"✓ Total de modelos a entrenar: {total_models}")
 
+print(
+    "\nExplicación del costo computacional:\n"
+    "- 3 valores de regParam × 3 valores de elasticNetParam = 9 combinaciones\n"
+    "- Con K = 5 folds:\n"
+    "  → 9 × 5 = 45 modelos entrenados\n\n"
+    "Conclusión:\n"
+    "Cross-Validation produce modelos más robustos,\n"
+    "pero incrementa significativamente el costo computacional."
+)
 
-# %%
-# RETO 4: Configurar CrossValidator
-#
-# Objetivo:
-# - Ensamblar el proceso de Cross-Validation
-# - Entrenar múltiples modelos automáticamente
-# - Seleccionar el mejor según la métrica (RMSE)
+# ------------------------------------------------------------
+# RETO 4: CONFIGURAR CROSSVALIDATOR
+# ------------------------------------------------------------
 
-from pyspark.ml.tuning import CrossValidator
+print("\n" + "-"*60)
+print("RETO 4: CONFIGURAR CROSSVALIDATOR")
+print("-"*60)
+
+print(
+    "\nObjetivo del reto:\n"
+    "- Ensamblar el proceso completo de Cross-Validation\n"
+    "- Entrenar múltiples modelos automáticamente\n"
+    "- Seleccionar el mejor modelo según la métrica RMSE"
+)
 
 # Elección de K
-# K = 5 → balance clásico entre robustez y costo computacional
-K = 5
+print(f"\nElección de K-Fold Cross-Validation:")
+print(f"→ K = {K}")
+
+print(
+    "\nJustificación de K = 5:\n"
+    "- Reduce la varianza del error de evaluación\n"
+    "- Es menos costoso que K = 10\n"
+    "- Es un estándar ampliamente usado en problemas reales"
+)
 
 # Configuración del CrossValidator
 crossval = CrossValidator(
@@ -189,44 +258,53 @@ crossval = CrossValidator(
     seed=42                           # Reproducibilidad
 )
 
-print(f"✓ Cross-Validation configurado con K={K} folds")
-print(f"✓ Combinaciones de hiperparámetros: {len(param_grid)}")
-print(f"✓ Total de modelos a entrenar: {len(param_grid) * K}")
+print("\n✓ CrossValidator configurado correctamente")
+print(f"  • Número de folds (K): {K}")
+print(f"  • Combinaciones de hiperparámetros: {len(param_grid)}")
+print(f"  • Total de modelos a entrenar: {len(param_grid) * K}")
 
-# Explicación (comentario para el notebook):
-#
-# - Usamos K=5 porque:
-#   ✔️ Reduce la varianza del error
-#   ✔️ No es tan costoso como K=10
-#   ✔️ Es estándar en problemas reales
-#
-# - Total de modelos entrenados:
-#   combinaciones × K = {len(param_grid)} × {K}
-#
-# ⚠️ En datasets muy grandes, este número puede crecer rápidamente
+print(
+    "\nAdvertencia práctica:\n"
+    "⚠️ El número de modelos crece rápidamente con:\n"
+    "- Más hiperparámetros\n"
+    "- Más valores por hiperparámetro\n"
+    "- Valores altos de K\n\n"
+    "En datasets grandes, es común usar:\n"
+    "- TrainValidationSplit\n"
+    "- Menos combinaciones\n"
+    "- Búsqueda guiada (no grid exhaustivo)"
+)
 
+# ------------------------------------------------------------
+# RETO 5: EJECUTAR CROSS-VALIDATION Y ANALIZAR RESULTADOS
+# ------------------------------------------------------------
 
-# %%
-# RETO 5: Ejecutar Cross-Validation y Analizar Resultados
-#
-# Objetivo:
-# - Ejecutar Cross-Validation
-# - Analizar métricas promedio
-# - Identificar el mejor modelo
-# - Evaluarlo en el set de test
+print("\n" + "-"*60)
+print("RETO 5: EJECUTAR CROSS-VALIDATION Y ANALIZAR RESULTADOS")
+print("-"*60)
 
-print("Entrenando modelos con Cross-Validation...")
+print(
+    "\nObjetivo del reto:\n"
+    "- Ejecutar Cross-Validation\n"
+    "- Analizar métricas promedio\n"
+    "- Identificar el mejor modelo\n"
+    "- Evaluarlo en el set de test"
+)
+
+print("\nEntrenando modelos con Cross-Validation...")
 cv_model = crossval.fit(train)
-print("✓ Cross-validation completada")
+print("✓ Cross-Validation completada correctamente")
 
-# %%
-# Analizar métricas promedio (RMSE) por configuración
+# ------------------------------------------------------------
+# Análisis de métricas promedio (RMSE)
+# ------------------------------------------------------------
+
 avg_metrics = cv_model.avgMetrics
 
-# Índice del mejor modelo (menor RMSE)
 best_metric_idx = avg_metrics.index(min(avg_metrics))
 
 print("\n=== MÉTRICAS PROMEDIO POR CONFIGURACIÓN (RMSE) ===")
+
 for i, metric in enumerate(avg_metrics):
     params = param_grid[i]
     reg = params[lr.regParam]
@@ -237,49 +315,62 @@ for i, metric in enumerate(avg_metrics):
         f"Config {i+1:02d} | "
         f"λ={reg:<5.2f} | "
         f"α={elastic:<3.1f} | "
-        f"RMSE CV={metric:,.2f}"
+        f"RMSE CV=${metric:,.2f}"
         f"{marker}"
     )
 
-# %%
-# Obtener el mejor modelo encontrado por Cross-Validation
+print(
+    "\nInterpretación:\n"
+    "- avgMetrics contiene el RMSE promedio de cada combinación\n"
+    "- El mejor modelo es el que minimiza el RMSE promedio\n"
+    "- La selección NO se hace con datos de train ni test\n"
+    "- Esto reduce overfitting y mejora la generalización"
+)
+
+# ------------------------------------------------------------
+# Mejor modelo encontrado
+# ------------------------------------------------------------
+
 best_model = cv_model.bestModel
 
-print("\n=== MEJOR MODELO SELECCIONADO ===")
+print("\n=== MEJOR MODELO SELECCIONADO POR CROSS-VALIDATION ===")
 print(f"regParam (λ):        {best_model.getRegParam()}")
 print(f"elasticNetParam (α): {best_model.getElasticNetParam()}")
 
-# %%
-# Evaluar el mejor modelo en el set de test
+# ------------------------------------------------------------
+# Evaluación final en test
+# ------------------------------------------------------------
+
 predictions = best_model.transform(test)
 rmse_test = evaluator.evaluate(predictions)
 
 print("\n=== EVALUACIÓN FINAL EN TEST ===")
-print(f"RMSE Test: ${rmse_test:,.2f}")
+print(f"RMSE Test (modelo CV): ${rmse_test:,.2f}")
 
-# %%
-# Comentario conceptual (para el notebook):
-#
-# - avgMetrics contiene el RMSE promedio de cada combinación
-# - El mejor modelo NO se elige por train, sino por validación cruzada
-# - Esto reduce overfitting y mejora generalización
-#
-# ✔️ El modelo seleccionado es el que minimiza el RMSE promedio en CV
+print(
+    "\nConclusión del RETO 5:\n"
+    "✔️ El modelo seleccionado es el que minimiza el RMSE promedio en Cross-Validation\n"
+    "✔️ Es más robusto que seleccionar un modelo con un solo split\n"
+    "✔️ Representa mejor el desempeño esperado en datos no vistos"
+)
 
+# ------------------------------------------------------------
+# RETO 6: COMPARAR CROSS-VALIDATION VS SIMPLE SPLIT
+# ------------------------------------------------------------
 
-# %%
-# RETO 6: Comparar Cross-Validation vs Simple Split
-#
-# Objetivo:
-# - Entrenar un modelo SIN Cross-Validation
-# - Comparar su desempeño contra el modelo seleccionado con CV
-# - Analizar cuál enfoque es más confiable
+print("\n" + "-"*60)
+print("RETO 6: COMPARAR CROSS-VALIDATION VS SIMPLE SPLIT")
+print("-"*60)
 
-from pyspark.ml.regression import LinearRegression
+print(
+    "\nObjetivo del reto:\n"
+    "- Entrenar un modelo SIN Cross-Validation\n"
+    "- Comparar su desempeño contra el modelo con CV\n"
+    "- Evaluar cuál enfoque es más confiable"
+)
 
 print("\nEntrenando modelo SIMPLE (sin Cross-Validation)...")
 
-# Modelo simple usando los mismos hiperparámetros del mejor modelo CV
 lr_simple = LinearRegression(
     featuresCol="features",
     labelCol="label",
@@ -288,46 +379,46 @@ lr_simple = LinearRegression(
     elasticNetParam=best_model.getElasticNetParam()
 )
 
-# Entrenamiento
 model_simple = lr_simple.fit(train)
 
-# Evaluación en test
 rmse_simple = evaluator.evaluate(model_simple.transform(test))
 
-# Comparación
-print("\n=== COMPARACIÓN CV vs SIMPLE SPLIT ===")
+print("\n=== COMPARACIÓN DE DESEMPEÑO ===")
 print(f"RMSE con Cross-Validation: ${rmse_test:,.2f}")
 print(f"RMSE sin Cross-Validation: ${rmse_simple:,.2f}")
 print(f"Diferencia absoluta:       ${abs(rmse_test - rmse_simple):,.2f}")
 
-# %%
-# Interpretación (completa como comentario en tu notebook):
-#
-# - El modelo con Cross-Validation es más confiable porque:
-#   • Evalúa múltiples particiones del train
-#   • Reduce la dependencia de un solo split aleatorio
-#   • Produce una métrica más estable y robusta
-#
-# - El modelo sin CV puede:
-#   • Verse afectado por la casualidad del split
-#   • Sobreestimar o subestimar el rendimiento real
-#
-# Conclusión:
-# ✔️ Cross-Validation ofrece una mejor estimación del desempeño real del modelo
+print(
+    "\nInterpretación final:\n"
+    "- El modelo con Cross-Validation es más confiable porque:\n"
+    "  • Evalúa múltiples particiones del train\n"
+    "  • Reduce la dependencia de un solo split aleatorio\n"
+    "  • Produce métricas más estables\n\n"
+    "- El modelo sin CV puede:\n"
+    "  • Sobreestimar o subestimar el desempeño real\n"
+    "  • Depender fuertemente de la casualidad del split\n\n"
+    "Conclusión:\n"
+    "✔️ Cross-Validation ofrece una mejor estimación del desempeño real del modelo\n"
+    "✔️ Es preferible cuando el costo computacional lo permite"
+)
 
+# ------------------------------------------------------------
+# RETO BONUS: EXPERIMENTAR CON DIFERENTES VALORES DE K
+# ------------------------------------------------------------
 
-# %%
-# RETO BONUS: Experimentar con diferentes valores de K (Cross-Validation)
-#
-# Objetivo:
-# - Comparar K=3, K=5 y K=10
-# - Observar impacto en RMSE y tiempo de ejecución
-# - Entender el trade-off entre robustez y costo computacional
+print("\n" + "-"*60)
+print("RETO BONUS: EXPERIMENTAR CON DIFERENTES VALORES DE K (CROSS-VALIDATION)")
+print("-"*60)
 
-from pyspark.ml.tuning import CrossValidator
-import time
+print(
+    "\nObjetivo del experimento:\n"
+    "- Comparar K = 3, K = 5 y K = 10\n"
+    "- Analizar el impacto en RMSE\n"
+    "- Medir el tiempo de ejecución\n"
+    "- Entender el trade-off entre robustez y costo computacional"
+)
 
-print("\n=== EXPERIMENTO CON DIFERENTES VALORES DE K ===")
+print("\n=== EJECUCIÓN DE EXPERIMENTOS ===")
 
 resultados_k = []
 
@@ -357,12 +448,17 @@ for k in [3, 5, 10]:
     print(
         f"K={k:2d} | "
         f"Mejor RMSE: ${best_rmse:,.2f} | "
-        f"Tiempo: {elapsed_time:.1f} segundos"
+        f"Tiempo de ejecución: {elapsed_time:.1f} segundos"
     )
 
-# %%
+# ------------------------------------------------------------
 # Resumen comparativo
-print("\n=== RESUMEN COMPARATIVO POR K ===")
+# ------------------------------------------------------------
+
+print("\n" + "="*60)
+print("RESUMEN COMPARATIVO POR VALOR DE K")
+print("="*60)
+
 for r in resultados_k:
     print(
         f"K={r['K']:2d} | "
@@ -370,46 +466,47 @@ for r in resultados_k:
         f"Tiempo: {r['time_seconds']:.1f}s"
     )
 
-# %%
-# Interpretación (completa como comentario en tu notebook):
-#
-# - K pequeño (ej. 3):
-#   • Más rápido
-#   • Métrica menos estable
-#
-# - K intermedio (5):
-#   • Buen balance entre costo y robustez
-#   • Opción más común en práctica
-#
-# - K grande (10):
-#   • Métrica más robusta
-#   • Mucho más costoso computacionalmente
-#
-# Conclusión:
-# ❌ Más folds NO siempre es mejor
-# ✔️ El valor óptimo de K depende del tamaño del dataset y del costo computacional
+print(
+    "\nInterpretación del experimento:\n"
+    "- K pequeño (ej. K=3):\n"
+    "  • Menor tiempo de ejecución\n"
+    "  • Métrica menos estable\n\n"
+    "- K intermedio (K=5):\n"
+    "  • Buen balance entre costo y robustez\n"
+    "  • Es el valor más usado en práctica\n\n"
+    "- K grande (K=10):\n"
+    "  • Métrica más robusta\n"
+    "  • Costo computacional significativamente mayor\n\n"
+    "Conclusión:\n"
+    "❌ Más folds NO siempre es mejor\n"
+    "✔️ El valor óptimo de K depende del tamaño del dataset\n"
+    "✔️ También depende del tiempo y recursos disponibles"
+)
 
-# %%
+# ------------------------------------------------------------
 # Guardar el mejor modelo entrenado con Cross-Validation
+# ------------------------------------------------------------
+
 model_path = "/opt/spark-data/processed/cv_best_model"
+best_model.write().overwrite().save(model_path)
 
-# Guardar modelo
-best_model.save(model_path)
+print(f"\n✓ Modelo guardado correctamente en: {model_path}")
 
-print(f"✓ Modelo guardado correctamente en: {model_path}")
+# ------------------------------------------------------------
+# Cierre del módulo
+# ------------------------------------------------------------
 
-
-# %%
 print("\n" + "="*60)
 print("RESUMEN VALIDACIÓN CRUZADA")
 print("="*60)
 print("Verifica que hayas completado:")
-print("  [ ] Entendido el concepto de K-Fold")
-print("  [ ] Configurado ParamGrid con hiperparámetros")
-print("  [ ] Ejecutado CrossValidator")
-print("  [ ] Identificado el mejor modelo")
-print("  [ ] Comparado con entrenamiento simple")
+print("  [✓] Entendido el concepto de K-Fold")
+print("  [✓] Configurado ParamGrid con hiperparámetros")
+print("  [✓] Ejecutado CrossValidator")
+print("  [✓] Identificado el mejor modelo")
+print("  [✓] Comparado con entrenamiento simple")
+print("  [✓] Analizado el impacto del valor de K")
 print("="*60)
 
-# %%
 spark.stop()
+

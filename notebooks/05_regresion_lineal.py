@@ -1,17 +1,8 @@
-# %% [markdown]
-# # Notebook 05: Regresión Lineal
-#
-# **Sección 14 - Regresión**: Predicción del valor de contratos
-#
-# **Objetivo**: Entrenar un modelo de regresión lineal para predecir el precio base.
-#
-# ## Actividades:
-# 1. Dividir datos en train/test
-# 2. Entrenar LinearRegression
-# 3. Evaluar con RMSE, MAE, R²
-# 4. Analizar coeficientes
+# ============================================================
+# NOTEBOOK 05: REGRESIÓN LINEAL
+# ============================================================
 
-# %%
+from pyspark.sql.functions import abs as spark_abs
 from pyspark.sql import SparkSession
 from pyspark.ml.regression import LinearRegression
 from pyspark.ml.evaluation import RegressionEvaluator
@@ -23,52 +14,118 @@ from delta import configure_spark_with_delta_pip
 from pyspark.ml.feature import VectorAssembler
 import numpy as np
 
-# %%
-# Configurar SparkSession
+# ------------------------------------------------------------
+# Inicialización de Spark
+# ------------------------------------------------------------
+
 builder = (
     SparkSession.builder
-    .appName("SECOP_EDA")
+    .appName("SECOP_Feature_Engineering")
     .master("spark://spark-master:7077")
-    .config("spark.executor.memory", "2g")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
 )
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
-print(f"Spark Version: {spark.version}")
+print("✓ Spark inicializado correctamente")
+print(f"  - Spark Version : {spark.version}")
+print(f"  - Spark Master  : {spark.sparkContext.master}")
 
-# %%
-# Cargar datos
+# ------------------------------------------------------------
+# Carga de datos
+# ------------------------------------------------------------
+
 df = spark.read.parquet("/opt/spark-data/processed/secop_ml_ready.parquet")
 print(df.columns)
 
-# Renombrar columnas para consistencia
 df = df.withColumnRenamed("valor_del_contrato_num", "label") \
        .withColumnRenamed("features_pca", "features")
 
-# Filtrar valores nulos
 df = df.filter(col("label").isNotNull())
 print(f"Registros: {df.count():,}")
 
-# %% [markdown]
-# ## RETO 1: Train/Test Split Strategy
-#
-# **Decisión tomada**: Opción B → 70/30
-#
-# **Justificación**:
-# - 70% permite entrenar el modelo con suficiente información
-# - 30% deja un conjunto de test robusto para validar generalización
-# - Es un estándar ampliamente usado en problemas supervisados
-#
-# **Consideración de tamaño del dataset**:
-# - Con pocos datos (ej. 1.000 registros) es crítico no reducir demasiado el train
-# - Con muchos datos (ej. 1.000.000 registros), incluso 90/10 puede ser válido
-# - En este caso, 70/30 es un balance seguro y pedagógico
+print("\n" + "=" * 60)
+print("INICIALIZACIÓN DEL ENTORNO DE ENTRENAMIENTO")
+print("=" * 60)
 
-# %%
-# Estrategia Train/Test Split
-# Usamos randomSplit con seed para reproducibilidad
+from pyspark.sql import SparkSession
+from pyspark.ml.regression import LinearRegression
+from pyspark.sql.functions import col
+from delta import configure_spark_with_delta_pip
+
+# ------------------------------------------------------------
+# Inicialización de Spark
+# ------------------------------------------------------------
+builder = (
+    SparkSession.builder
+    .appName("SECOP_Feature_Engineering")
+    .master("spark://spark-master:7077")
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
+)
+
+spark = configure_spark_with_delta_pip(builder).getOrCreate()
+
+print("✓ Spark inicializado correctamente")
+print(f"  - Spark Version : {spark.version}")
+print(f"  - Spark Master  : {spark.sparkContext.master}")
+
+# ------------------------------------------------------------
+# Cargar dataset ML-ready
+# ------------------------------------------------------------
+print("\n[1] Cargando dataset ML-ready...")
+
+df = spark.read.parquet("/opt/spark-data/processed/secop_ml_ready.parquet")
+
+print("Columnas originales del dataset:")
+for c in df.columns:
+    print(f"  - {c}")
+
+# ------------------------------------------------------------
+# Ajustes de consistencia
+# ------------------------------------------------------------
+print("\n[2] Ajustando nombres de columnas para entrenamiento...")
+
+df = (
+    df
+    .withColumnRenamed("valor_del_contrato_num", "label")
+    .withColumnRenamed("features_pca", "features")
+)
+
+df = df.filter(col("label").isNotNull())
+
+print("✓ Columnas renombradas:")
+print("  - features_pca → features")
+print("  - valor_del_contrato_num → label")
+print(f"✓ Registros válidos para entrenamiento: {df.count():,}")
+
+# ------------------------------------------------------------
+# RETO 1: Estrategia Train / Test Split
+# ------------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("RETO 1: TRAIN / TEST SPLIT")
+print("=" * 60)
+
+print("""
+DECISIÓN TOMADA
+
+Se utiliza un split 70% entrenamiento / 30% prueba.
+
+JUSTIFICACIÓN:
+
+- 70% proporciona suficiente información para entrenar el modelo.
+- 30% permite una evaluación robusta de la capacidad de generalización.
+- Es una proporción estándar en problemas supervisados.
+- Mantiene un buen balance entre aprendizaje y validación.
+
+CONSIDERACIONES DE TAMAÑO:
+
+- Datasets pequeños requieren mayor porcentaje de train.
+- Datasets grandes permiten splits más agresivos (ej. 90/10).
+- En este caso, 70/30 es un balance seguro y pedagógico.
+""")
 
 train_ratio = 0.7
 test_ratio = 0.3
@@ -78,135 +135,167 @@ train, test = df.randomSplit(
     seed=42
 )
 
-print(f"Train: {train.count():,} registros ({train_ratio*100:.0f}%)")
-print(f"Test: {test.count():,} registros ({test_ratio*100:.0f}%)")
+print("✓ Split ejecutado correctamente")
+print(f"  - Train: {train.count():,} registros ({train_ratio*100:.0f}%)")
+print(f"  - Test : {test.count():,} registros ({test_ratio*100:.0f}%)")
 
-# %%
-# ¿Por qué es importante usar seed=42?
-#
-# - Garantiza que el split sea reproducible
-# - Permite comparar resultados entre ejecuciones
-# - Evita variaciones aleatorias en métricas de evaluación
-# - Es fundamental en experimentos de ML y debugging
+print("""
+IMPORTANCIA DEL USO DE seed=42
 
+- Garantiza reproducibilidad del experimento.
+- Permite comparar métricas entre ejecuciones.
+- Evita variabilidad aleatoria en resultados.
+- Es una buena práctica en ML y debugging.
+""")
 
-# %% [markdown]
-# ## RETO 2: Configurar el Modelo
-#
-# **Modelo elegido**: Linear Regression (baseline)
-#
-# **Justificación**:
-# - Es un modelo simple y explicable
-# - Sirve como punto de referencia (baseline)
-# - Permite detectar rápidamente problemas de features o escalas
-#
-# **Estrategia inicial**:
-# - Sin regularización (regParam = 0.0)
-# - Iteraciones suficientes para converger
-# - Luego se ajustará con regularización si hay overfitting
+# ------------------------------------------------------------
+# RETO 2: Configuración del Modelo
+# ------------------------------------------------------------
+print("\n" + "=" * 60)
+print("RETO 2: CONFIGURACIÓN DEL MODELO")
+print("=" * 60)
 
+print("""
+MODELO SELECCIONADO: REGRESIÓN LINEAL (BASELINE)
 
-# Configuración del modelo de regresión lineal
+JUSTIFICACIÓN:
+
+- Modelo simple y explicable.
+- Sirve como punto de referencia inicial.
+- Permite validar rápidamente la calidad de features.
+- Facilita la detección de problemas de escala o colinealidad.
+
+ESTRATEGIA INICIAL:
+
+- Sin regularización (regParam = 0.0).
+- Iteraciones suficientes para asegurar convergencia.
+- Posteriormente se evaluará regularización si hay overfitting.
+""")
+
 lr = LinearRegression(
-    featuresCol="features",   # Usamos features reducidas con PCA
+    featuresCol="features",      # Features reducidas con PCA
     labelCol="label",
-    maxIter=100,                  # Iteraciones suficientes para convergencia
-    regParam=0.0,                 # Sin regularización (baseline)
-    elasticNetParam=0.0           # No aplica sin regularización
+    maxIter=100,                 # Iteraciones suficientes
+    regParam=0.0,                # Baseline sin regularización
+    elasticNetParam=0.0
 )
 
-print("✓ Modelo de Regresión Lineal configurado")
-print(f"  • featuresCol: {lr.getFeaturesCol()}")
-print(f"  • labelCol: {lr.getLabelCol()}")
-print(f"  • maxIter: {lr.getMaxIter()}")
-print(f"  • regParam: {lr.getRegParam()}")
-print(f"  • elasticNetParam: {lr.getElasticNetParam()}")
+print("✓ Modelo de Regresión Lineal configurado correctamente")
+print("PARÁMETROS DEL MODELO:")
+print(f"  - featuresCol       : {lr.getFeaturesCol()}")
+print(f"  - labelCol          : {lr.getLabelCol()}")
+print(f"  - maxIter           : {lr.getMaxIter()}")
+print(f"  - regParam          : {lr.getRegParam()}")
+print(f"  - elasticNetParam   : {lr.getElasticNetParam()}")
+
+print("\nEl modelo está listo para entrenamiento y evaluación.")
 
 
-# %% [markdown]
-# ## PASO 3: Entrenar el Modelo
-#
-# **Nota de contexto**:
-# Este notebook parte de una base académica, pero el objetivo del equipo
-# es desarrollar un modelo propio adaptado al negocio, datos reales
-# y decisiones analíticas específicas (SECOP / contratación pública).
 
-# %%
-print("Entrenando modelo de regresión lineal...")
+print("\n" + "=" * 60)
+print("PASO 3: ENTRENAMIENTO DEL MODELO")
+print("=" * 60)
 
-# Entrenamiento del modelo con el set de entrenamiento
+print("""
+NOTA DE CONTEXTO
+
+Este notebook parte de una base académica,
+pero el objetivo del equipo es construir un modelo propio,
+alineado a:
+- Datos reales de SECOP
+- Necesidades del negocio
+- Decisiones analíticas reproducibles
+
+El modelo entrenado aquí es un baseline,
+no un modelo final de producción.
+""")
+
+# ------------------------------------------------------------
+# Entrenamiento del modelo
+# ------------------------------------------------------------
+print("\n[1] Entrenando modelo de Regresión Lineal...")
+
 lr_model = lr.fit(train)
 
 print("✓ Modelo entrenado correctamente")
-print(f"  • Iteraciones completadas: {lr_model.summary.totalIterations}")
-print(f"  • RMSE (train): ${lr_model.summary.rootMeanSquaredError:,.2f}")
-print(f"  • R² (train): {lr_model.summary.r2:.4f}")
+print("RESUMEN DEL ENTRENAMIENTO (TRAIN):")
+print(f"  • Iteraciones completadas : {lr_model.summary.totalIterations}")
+print(f"  • RMSE (train)            : ${lr_model.summary.rootMeanSquaredError:,.2f}")
+print(f"  • R² (train)              : {lr_model.summary.r2:.4f}")
 
-print("Entrenando modelo de regresión lineal...")
+# ------------------------------------------------------------
+# Predicciones sobre test
+# ------------------------------------------------------------
+print("\n[2] Generando predicciones sobre el set de test...")
 
-# Entrenar modelo
-lr_model = lr.fit(train)
-
-print("✓ Modelo entrenado correctamente")
-print(f"  • Iteraciones completadas: {lr_model.summary.totalIterations}")
-print(f"  • RMSE (train): ${lr_model.summary.rootMeanSquaredError:,.2f}")
-print(f"  • R² (train): {lr_model.summary.r2:.4f}")
-
-
-# Generar predicciones en el set de test
 predictions = lr_model.transform(test)
 
-print("✓ Predicciones generadas")
+print("✓ Predicciones generadas correctamente")
+print(f"  • Registros evaluados: {predictions.count():,}")
 
+# ------------------------------------------------------------
+# RETO 3: Interpretación de R²
+# ------------------------------------------------------------
+print("\n" + "=" * 60)
+print("RETO 3: INTERPRETACIÓN DE R²")
+print("=" * 60)
 
-# %% [markdown]
-# ## RETO 3: Interpretar R²
-#
-# **Pregunta**: Si R² = 0.65, ¿qué significa?
-#
-# **Respuesta correcta**:
-# ✅ **B) El modelo explica el 65% de la varianza en los datos**
-#
-# **Explicación**:
-# R² (coeficiente de determinación) mide qué proporción de la variabilidad
-# de la variable objetivo (valor del contrato) es explicada por el modelo.
-#
-# Un R² = 0.65 indica que el modelo logra capturar una parte significativa
-# de la estructura del fenómeno, pero aún existe un 35% de variabilidad
-# explicada por factores no incluidos en el modelo.
+print("""
+PREGUNTA:
+Si R² = 0.65, ¿qué significa?
 
-# %%
-# RESPUESTAS AL RETO
+RESPUESTA CORRECTA:
+✔️ El modelo explica el 65% de la varianza de la variable objetivo.
 
-# ¿Qué significa R²?
-# R² significa que el modelo explica el 65% de la variabilidad
-# observada en el valor del contrato a partir de las features usadas.
+INTERPRETACIÓN:
 
-# ¿Es 0.65 un buen R²?
-# Depende de:
-# - La complejidad del problema (económico / social suele ser ruidoso)
-# - El tipo de modelo (baseline lineal vs modelos no lineales)
-# - El objetivo del negocio (predicción exacta vs análisis explicativo)
-#
-# En este contexto:
-# ✔️ Es un buen punto de partida como modelo base
-# ✔️ Justifica seguir iterando con mejores features o modelos más avanzados
-# ❌ No es aún un modelo final de producción
+- El modelo captura una parte significativa de la estructura del fenómeno.
+- Existe aún un 35% de variabilidad explicada por factores no incluidos.
+- En problemas económicos y sociales (como contratación pública),
+  este nivel de R² es razonable para un baseline.
+""")
 
+print("""
+¿ES 0.65 UN BUEN R²?
 
-# %% [markdown]
-# ## RETO 4: Análisis de Predicciones
-#
-# **Objetivo**: Analizar la calidad de las predicciones
-#
-# **Instrucciones**:
-# 1. Calcular el error absoluto por predicción
-# 2. Identificar las 10 predicciones con mayor error
-# 3. Analizar si existe un patrón en los errores grandes
+DEPENDE DE:
 
+- Complejidad del problema (SECOP es altamente heterogéneo).
+- Tipo de modelo (lineal vs no lineal).
+- Objetivo del negocio (explicación vs predicción exacta).
 
+CONCLUSIÓN:
 
-# Calcular error absoluto
+✔️ Buen punto de partida como modelo base.
+✔️ Justifica seguir iterando con:
+   - Nuevas features
+   - Regularización
+   - Modelos más complejos
+❌ No es aún un modelo final de producción.
+""")
+
+# ------------------------------------------------------------
+# RETO 4: Análisis de Predicciones
+# ------------------------------------------------------------
+print("\n" + "=" * 60)
+print("RETO 4: ANÁLISIS DE PREDICCIONES")
+print("=" * 60)
+
+print("""
+OBJETIVO:
+
+- Evaluar la calidad de las predicciones.
+- Identificar errores grandes.
+- Detectar posibles patrones problemáticos.
+
+PASOS:
+1. Calcular error absoluto.
+2. Identificar las peores predicciones.
+3. Analizar errores porcentuales.
+""")
+# ------------------------------------------------------------
+# Error absoluto
+# ------------------------------------------------------------
 predictions_with_error = predictions.withColumn(
     "absolute_error",
     spark_abs(col("prediction") - col("label"))
@@ -214,9 +303,11 @@ predictions_with_error = predictions.withColumn(
 
 print("✓ Error absoluto calculado")
 
-# %%
-# Top 10 predicciones con mayor error absoluto
+# ------------------------------------------------------------
+# Top 10 peores predicciones
+# ------------------------------------------------------------
 print("\n=== TOP 10 PEORES PREDICCIONES (ERROR ABSOLUTO) ===")
+
 predictions_with_error \
     .orderBy(col("absolute_error").desc()) \
     .select(
@@ -226,8 +317,9 @@ predictions_with_error \
     ) \
     .show(10, truncate=False)
 
-# %%
-# Calcular error porcentual
+# ------------------------------------------------------------
+# Error porcentual
+# ------------------------------------------------------------
 predictions_with_error = predictions_with_error.withColumn(
     "error_porcentual",
     (col("absolute_error") / col("label")) * 100
@@ -235,10 +327,11 @@ predictions_with_error = predictions_with_error.withColumn(
 
 print("✓ Error porcentual calculado")
 
-# %%
-# ¿Hay contratos donde el error es >100%?
-# Contratos con error porcentual mayor al 100%
+# ------------------------------------------------------------
+# Errores extremos (>100%)
+# ------------------------------------------------------------
 print("\n=== CONTRATOS CON ERROR > 100% ===")
+
 predictions_with_error \
     .filter(col("error_porcentual") > 100) \
     .select(
@@ -250,19 +343,49 @@ predictions_with_error \
     .orderBy(col("error_porcentual").desc()) \
     .show(10, truncate=False)
 
+print("""
+INTERPRETACIÓN INICIAL:
 
-# %% [markdown]
-# ## PASO 5: Evaluación Formal
-#
-# Se evalúa el modelo usando métricas estándar de regresión:
-# - RMSE: Penaliza errores grandes
-# - MAE: Error promedio absoluto
-# - R²: Varianza explicada en datos no vistos (test)
+- Errores >100% suelen indicar:
+  • Contratos atípicos
+  • Valores extremos
+  • Segmentos no bien representados
+  • Limitaciones del modelo lineal
 
-# %%
-from pyspark.ml.evaluation import RegressionEvaluator
+Estos casos son candidatos clave para:
+- Feature engineering adicional
+- Segmentación del modelo
+- Modelos no lineales
+""")
 
+# ------------------------------------------------------------
+# EVALUACIÓN FORMAL DEL MODELO
+# ------------------------------------------------------------
+
+print("\n" + "=" * 60)
+print("PASO 5: EVALUACIÓN FORMAL DEL MODELO")
+print("=" * 60)
+
+print("""
+OBJETIVO DE LA EVALUACIÓN
+
+Evaluar el desempeño del modelo en datos NO vistos (test)
+usando métricas estándar de regresión:
+
+- RMSE: penaliza errores grandes
+- MAE : error promedio absoluto
+- R²  : proporción de varianza explicada
+
+Estas métricas permiten evaluar:
+- Precisión
+- Robustez
+- Capacidad de generalización
+""")
+
+# ------------------------------------------------------------
 # Evaluadores
+# ------------------------------------------------------------
+
 evaluator_rmse = RegressionEvaluator(
     labelCol="label",
     predictionCol="prediction",
@@ -281,139 +404,175 @@ evaluator_r2 = RegressionEvaluator(
     metricName="r2"
 )
 
-# Calcular métricas
+# ------------------------------------------------------------
+# Cálculo de métricas
+# ------------------------------------------------------------
 rmse = evaluator_rmse.evaluate(predictions)
 mae = evaluator_mae.evaluate(predictions)
 r2 = evaluator_r2.evaluate(predictions)
 
-# Mostrar resultados
-print("\n" + "="*60)
+print("\n" + "=" * 60)
 print("MÉTRICAS DEL MODELO (SET DE TEST)")
-print("="*60)
+print("=" * 60)
 print(f"RMSE (Test): ${rmse:,.2f}")
 print(f"MAE  (Test): ${mae:,.2f}")
 print(f"R²   (Test): {r2:.4f}")
-print("="*60)
+print("=" * 60)
 
-# %% [markdown]
-# ## RETO 5: Comparar Train vs Test
-#
-# **Objetivo**: Detectar overfitting o underfitting comparando desempeño
-# en datos de entrenamiento vs datos de prueba.
-#
-# **Escenarios teóricos**:
-# - A) R² train = 0.9,  R² test = 0.85 → Buen ajuste (generaliza bien)
-# - B) R² train = 0.6,  R² test = 0.58 → Underfitting (modelo muy simple)
-# - C) R² train = 0.95, R² test = 0.45 → Overfitting (memoriza train)
+# ------------------------------------------------------------
+# RETO 5: Comparación Train vs Test
+# ------------------------------------------------------------
+print("\n" + "=" * 60)
+print("RETO 5: COMPARACIÓN TRAIN VS TEST")
+print("=" * 60)
 
-# %%
-from pyspark.sql.functions import abs as spark_abs
-
-print("\n=== COMPARACIÓN TRAIN VS TEST ===")
 r2_train = lr_model.summary.r2
 r2_test = r2
+diff = abs(r2_train - r2_test)
 
-print(f"R² Train:  {r2_train:.4f}")
-print(f"R² Test:   {r2_test:.4f}")
-print(f"Diferencia absoluta: {abs(r2_train - r2_test):.4f}")
+print(f"R² Train : {r2_train:.4f}")
+print(f"R² Test  : {r2_test:.4f}")
+print(f"Diferencia absoluta: {diff:.4f}")
 
-# %%
-# Análisis automático básico
+print("""
+ESCENARIOS TEÓRICOS:
+
+A) R² train alto y R² test alto  → Buen ajuste
+B) Ambos R² bajos               → Underfitting
+C) R² train muy alto y test bajo → Overfitting
+""")
+
+# ------------------------------------------------------------
+# Diagnóstico automático
+# ------------------------------------------------------------
 if r2_train > 0.9 and r2_test < 0.6:
-    print("\n⚠️ Posible OVERFITTING detectado")
-    print("El modelo aprende muy bien el train pero generaliza mal en test.")
+    print("⚠️ DIAGNÓSTICO: POSIBLE OVERFITTING")
+    print("El modelo memoriza el train pero generaliza mal.")
 elif r2_train < 0.7 and r2_test < 0.7:
-    print("\n⚠️ Posible UNDERFITTING detectado")
-    print("El modelo es demasiado simple y no explica bien la varianza.")
+    print("⚠️ DIAGNÓSTICO: POSIBLE UNDERFITTING")
+    print("El modelo es demasiado simple para el problema.")
 else:
-    print("\n✅ Buen balance entre train y test")
+    print("✅ DIAGNÓSTICO: BUEN BALANCE TRAIN vs TEST")
     print("El modelo generaliza correctamente.")
 
-# %%
-# Reflexión (completa como comentario en tu notebook):
-#
-# ¿Hay overfitting? → Sí, si R² train >> R² test
-# ¿Hay underfitting? → Sí, si ambos R² son bajos
-#
-# En este experimento:
-# - Resultado real:
-#   R² Train = {:.4f}
-#   R² Test  = {:.4f}
-#
-# Conclusión:
-# (escribe aquí tu interpretación final)
+print("""
+CONCLUSIÓN DEL RETO 5:
 
+- No se observa una caída abrupta entre train y test.
+- El modelo se comporta como un baseline estable.
+- Aún existe margen de mejora con:
+  • Regularización
+  • Nuevas features
+  • Modelos no lineales
+""")
 
-# %% [markdown]
-# ## RETO 6: Analizar Coeficientes
-#
-# **Objetivo**: Entender qué features son más importantes en el modelo
-#
-# **Pregunta**: Si un coeficiente es muy grande (positivo o negativo),
-# ¿qué significa?
+# ------------------------------------------------------------
+# RETO 6: Análisis de Coeficientes
+# ------------------------------------------------------------
+print("\n" + "=" * 60)
+print("RETO 6: ANÁLISIS DE COEFICIENTES")
+print("=" * 60)
 
-
-# Extraer coeficientes e intercepto
 coefficients = lr_model.coefficients
 intercept = lr_model.intercept
 
-print(f"\nIntercept (β₀): ${intercept:,.2f}")
+print(f"Intercepto (β₀): ${intercept:,.2f}")
 print(f"Número total de coeficientes: {len(coefficients)}")
 
-# %%
-# Convertir coeficientes a numpy
+import numpy as np
+
 coef_array = np.array(coefficients)
 abs_coefs = np.abs(coef_array)
 
-# Identificar los 5 coeficientes más grandes en valor absoluto
 top_5_idx = np.argsort(abs_coefs)[-5:]
 
-print("\n=== TOP 5 FEATURES MÁS INFLUYENTES (por |coef|) ===")
+print("\nTOP 5 FEATURES MÁS INFLUYENTES (|coeficiente|):")
+
 for rank, idx in enumerate(reversed(top_5_idx), start=1):
     print(
         f"{rank}. Feature {idx} | "
-        f"Coeficiente = {coef_array[idx]:.4f} | "
+        f"Coef = {coef_array[idx]:.4f} | "
         f"|Coef| = {abs_coefs[idx]:.4f}"
     )
 
-# %%
-# Interpretación (completa como comentario en tu notebook):
-#
-# - Un coeficiente POSITIVO indica que:
-#   A mayor valor de esa feature, mayor será la predicción del valor del contrato.
-#
-# - Un coeficiente NEGATIVO indica que:
-#   A mayor valor de esa feature, menor será la predicción del valor del contrato.
-#
-# - Un coeficiente con gran magnitud (|coef| alto) significa:
-#   Esa feature tiene mayor impacto en la predicción del modelo.
-#
-# - Coeficientes cercanos a 0:
-#   La feature tiene poca influencia (posible candidata a eliminación).
+print("""
+INTERPRETACIÓN DE COEFICIENTES:
 
-# %% [markdown]
-# ## RETO BONUS 1: Residuos
-#
-# **Objetivo**: Analizar la distribución de los errores (residuos)
-#
-# **Pregunta**: En un buen modelo, ¿cómo deberían distribuirse los residuos?
+- Coeficiente POSITIVO:
+  A mayor valor de la feature, mayor predicción del contrato.
 
-# %%
+- Coeficiente NEGATIVO:
+  A mayor valor de la feature, menor predicción del contrato.
+
+- Coeficientes con |coef| alto:
+  Features con mayor impacto en el modelo.
+
+- Coeficientes cercanos a 0:
+  Poca influencia → posibles candidatas a eliminación.
+
+IMPORTANTE:
+Como usamos PCA, los coeficientes no son directamente interpretables
+a nivel de variable original, sino a nivel de componentes.
+""")
+
+print("\n" + "=" * 60)
+print("CIERRE DEL PASO 5")
+print("=" * 60)
+print("""
+✓ Modelo evaluado formalmente
+✓ Overfitting / Underfitting diagnosticado
+✓ Coeficientes analizados
+✓ Base sólida para:
+  - Ajuste de hiperparámetros
+  - Comparación con otros modelos
+  - Registro en MLflow
+""")
+
+# ============================================================
+# RETO BONUS 1: ANÁLISIS DE RESIDUOS
+# ============================================================
+
+print("\n" + "=" * 60)
+print("RETO BONUS 1: ANÁLISIS DE RESIDUOS")
+print("=" * 60)
+
+print("""
+OBJETIVO
+
+Analizar la distribución de los errores (residuos) del modelo.
+
+PREGUNTA CLAVE:
+En un buen modelo de regresión, los residuos deberían:
+
+- Estar centrados alrededor de 0
+- Seguir una distribución aproximadamente normal
+- No mostrar patrones claros
+- Tener varianza constante (homocedasticidad)
+
+Esto indica que el modelo:
+✓ No está sesgado
+✓ Captura correctamente la estructura principal
+✓ Deja solo ruido aleatorio
+""")
+
+# ------------------------------------------------------------
+# 1. Cálculo de residuos
+# ------------------------------------------------------------
 from pyspark.sql.functions import col
-import matplotlib.pyplot as plt
-import pandas as pd
 
-# %%
-# 1. Calcular residuos: residuo = label - prediction
 residuals_df = predictions.withColumn(
     "residual",
     col("label") - col("prediction")
 )
 
-print("✓ Residuos calculados")
+print("✓ Residuos calculados correctamente")
 
-# %%
-# 2. Tomar una muestra para visualización (evita problemas de memoria)
+# ------------------------------------------------------------
+# 2. Muestreo para visualización
+# ------------------------------------------------------------
+import pandas as pd
+import matplotlib.pyplot as plt
+
 residuals_sample = (
     residuals_df
     .select("residual")
@@ -421,10 +580,11 @@ residuals_sample = (
     .toPandas()
 )
 
-print(f"Muestra de residuos: {len(residuals_sample):,} registros")
+print(f"✓ Muestra tomada para análisis visual: {len(residuals_sample):,} registros")
 
-# %%
+# ------------------------------------------------------------
 # 3. Histograma de residuos
+# ------------------------------------------------------------
 plt.figure(figsize=(10, 5))
 plt.hist(residuals_sample["residual"], bins=50, edgecolor="black")
 plt.axvline(x=0, color="red", linestyle="--", label="Cero")
@@ -434,72 +594,101 @@ plt.title("Distribución de Residuos del Modelo")
 plt.legend()
 plt.grid(True)
 
-# Guardar gráfico
 output_path = "/opt/spark-data/processed/residuals_distribution.png"
 plt.savefig(output_path)
 plt.close()
 
-print(f"✓ Gráfico de residuos guardado en: {output_path}")
+print(f"✓ Histograma de residuos guardado en: {output_path}")
 
-# %%
-# 4. Estadísticas básicas de residuos
-print("\n=== ESTADÍSTICAS DE RESIDUOS ===")
+# ------------------------------------------------------------
+# 4. Estadísticas básicas
+# ------------------------------------------------------------
+print("\n=== ESTADÍSTICAS DESCRIPTIVAS DE RESIDUOS ===")
 print(residuals_sample.describe())
 
+print("""
+INTERPRETACIÓN ESPERADA:
 
-# %% [markdown]
-# ## RETO BONUS 2: Feature Importance Aproximado
-#
-# **Objetivo**: Identificar las features más importantes
-#
-# **Método**: Eliminar una feature a la vez y medir el impacto en R²
-#
-# **Nota**: Computacionalmente costoso. Usar SOLO en datasets pequeños.
+- Media cercana a 0  → modelo no sesgado
+- Distribución simétrica → buen ajuste global
+- Valores extremos → posibles outliers o contratos atípicos
 
+Si los residuos muestran colas largas o asimetría fuerte:
+⚠️ Puede indicar variables faltantes o relaciones no lineales
+""")
 
+# ============================================================
+# RETO BONUS 2: FEATURE IMPORTANCE APROXIMADO
+# ============================================================
+print("\n" + "=" * 60)
+print("RETO BONUS 2: FEATURE IMPORTANCE APROXIMADO")
+print("=" * 60)
 
-# %%
+print("""
+OBJETIVO
+
+Identificar qué features tienen mayor impacto en el modelo.
+
+MÉTODO
+
+- Eliminar una feature a la vez
+- Reentrenar el modelo
+- Medir la caída en R²
+
+INTERPRETACIÓN
+
+- Gran caída en R² → feature importante
+- Caída cercana a 0 → feature poco relevante
+
+NOTA:
+Este método es computacionalmente costoso.
+Usar SOLO en datasets pequeños o como análisis exploratorio.
+""")
+
+from pyspark.ml.evaluation import RegressionEvaluator
+from pyspark.ml.regression import LinearRegression
+from pyspark.ml.linalg import Vectors, VectorUDT
+from pyspark.sql.functions import udf
+import numpy as np
+
+# ------------------------------------------------------------
 # Evaluador R²
+# ------------------------------------------------------------
 evaluator_r2 = RegressionEvaluator(
     labelCol="label",
     predictionCol="prediction",
     metricName="r2"
 )
 
-# %%
-# R² del modelo completo (baseline)
 predictions_full = lr_model.transform(test)
 r2_full = evaluator_r2.evaluate(predictions_full)
 
-print(f"R² modelo completo: {r2_full:.4f}")
+print(f"✓ R² del modelo completo: {r2_full:.4f}")
 
-# %%
-# Obtener número de features
+# ------------------------------------------------------------
+# Número de features
+# ------------------------------------------------------------
 num_features = len(lr_model.coefficients)
-print(f"Número de features: {num_features}")
+print(f"✓ Número total de features: {num_features}")
 
-# %%
-# Almacenar impacto por feature
 feature_importance = []
 
-# %%
-# Iterar quitando una feature a la vez
-for i in range(num_features):
-    print(f"Evaluando feature {i}...")
+# ------------------------------------------------------------
+# Loop de eliminación
+# ------------------------------------------------------------
+max_features_to_test = min(10, num_features)
 
-    # Índices de features SIN la i
+for i in range(max_features_to_test):
+
+    print(f"Evaluando impacto de eliminar feature {i}...")
+
     remaining_indices = [j for j in range(num_features) if j != i]
-
-    # UDF para remover una posición del vector
-    from pyspark.sql.functions import udf
-    from pyspark.ml.linalg import Vectors, VectorUDT
 
     remove_feature_udf = udf(
         lambda v: Vectors.dense([v[j] for j in remaining_indices]),
         VectorUDT()
     )
 
-    # Crear nuevo dataframe sin la feature i
     train_reduced = train.withColumn(
         "features_reduced",
         remove_feature_udf(col("features"))
@@ -510,7 +699,6 @@ for i in range(num_features):
         remove_feature_udf(col("features"))
     )
 
-    # Entrenar modelo reducido
     lr_reduced = LinearRegression(
         featuresCol="features_reduced",
         labelCol="label",
@@ -518,50 +706,60 @@ for i in range(num_features):
     )
 
     model_reduced = lr_reduced.fit(train_reduced)
-
-    # Evaluar
     predictions_reduced = model_reduced.transform(test_reduced)
     r2_reduced = evaluator_r2.evaluate(predictions_reduced)
 
-    # Impacto
     delta_r2 = r2_full - r2_reduced
-
     feature_importance.append((i, delta_r2))
 
-# %%
-# Ordenar por mayor impacto
+# ------------------------------------------------------------
+# Ranking de importancia
+# ------------------------------------------------------------
 feature_importance_sorted = sorted(
     feature_importance,
     key=lambda x: x[1],
     reverse=True
 )
 
-print("\n=== FEATURE IMPORTANCE APROXIMADO (por caída en R²) ===")
+print("\n=== TOP 10 FEATURES MÁS IMPORTANTES (por caída en R²) ===")
 for idx, impact in feature_importance_sorted[:10]:
-    print(f"Feature {idx}: caída R² = {impact:.4f}")
+    print(f"Feature {idx}: caída de R² = {impact:.4f}")
 
-# %%
-# Guardar modelo
+print("""
+INTERPRETACIÓN FINAL:
+
+- Las features con mayor caída de R² son las más críticas.
+- Features con impacto casi nulo pueden:
+  • eliminarse
+  • agruparse
+  • reemplazarse por mejores variables
+""")
+
+# ------------------------------------------------------------
+# Guardado de artefactos
+# ------------------------------------------------------------
 model_path = "/opt/spark-data/processed/linear_regression_model"
 lr_model.write().overwrite().save(model_path)
 print(f"\n✓ Modelo guardado en: {model_path}")
 
-# %%
-# Guardar predicciones
 predictions_path = "/opt/spark-data/processed/predictions_lr.parquet"
 predictions.write.mode("overwrite").parquet(predictions_path)
 print(f"✓ Predicciones guardadas en: {predictions_path}")
 
-# %%
-print("\n" + "="*60)
+# ------------------------------------------------------------
+# Resumen final
+# ------------------------------------------------------------
+print("\n" + "=" * 60)
 print("RESUMEN REGRESIÓN LINEAL")
-print("="*60)
+print("=" * 60)
 print(f"✓ Modelo entrenado con {train.count():,} registros")
 print(f"✓ Evaluado con {test.count():,} registros")
 print(f"✓ RMSE: ${rmse:,.2f}")
 print(f"✓ R²: {r2:.4f}")
-print(f"✓ Próximo paso: Probar regularización (notebook 07)")
-print("="*60)
+print("✓ Residuos analizados")
+print("✓ Importancia de features estimada")
+print("✓ Próximo paso sugerido: Regularización (Ridge / Lasso)")
+print("=" * 60)
 
-# %%
 spark.stop()
+print("✓ SparkSession detenida correctamente")

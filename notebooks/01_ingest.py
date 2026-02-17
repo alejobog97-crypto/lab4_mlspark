@@ -1,7 +1,6 @@
-# =========================================
-# 01_ingest_bronze.py
-# Ingesta SECOP → Delta Bronze
-# =========================================
+# ============================================================
+# NOTEBOOK 01: INGESTA DE DATOS SECOP
+# ============================================================
 
 from pyspark.sql import SparkSession
 import os
@@ -12,9 +11,8 @@ from delta import configure_spark_with_delta_pip
 
 
 # -----------------------------------------
-# Spark Session
+# Inicialización de Spark
 # -----------------------------------------
-
 
 builder = (
     SparkSession.builder
@@ -25,41 +23,34 @@ builder = (
 )
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
-spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
+print("Spark inicializado correctamente")
+print(f"  - Spark Version : {spark.version}")
+print(f"  - Spark Master  : {spark.sparkContext.master}")
 
-print(f"Spark Version: {spark.version}")
-print(f"Spark Master: {spark.sparkContext.master}")
 
 # -----------------------------------------
-# Paths
-# -----------------------------------------
-RAW_PATH = "/opt/spark-data/raw"
-BRONZE_PATH = "/opt/spark-data/lakehouse/bronze/secop"
-JSON_PATH = f"{RAW_PATH}/secop_contratos.json"
-
-# -----------------------------------------
-# Spark Session
+# Definición de rutas
 # -----------------------------------------
 
-
-print(f"Spark Version: {spark.version}")
-print(f"Spark Master: {spark.sparkContext.master}")
-
-# -----------------------------------------
-# Paths
-# -----------------------------------------
 RAW_PATH    = "/opt/spark-data/raw/secop"
 BRONZE_PATH = "/opt/spark-data/lakehouse/bronze/secop"
+JSON_PATH   = f"{RAW_PATH}/secop_contratos.json"
 
-JSON_PATH = f"{RAW_PATH}/secop_contratos.json"
-
+print(f"  - Ruta RAW    : {RAW_PATH}")
+print(f"  - Ruta Bronze : {BRONZE_PATH}")
+print(f"  - Archivo JSON: {JSON_PATH}")
 
 os.makedirs(RAW_PATH, exist_ok=True)
+print("Directorio RAW verificado / creado")
+
 
 # -----------------------------------------
-# Extracción desde Socrata (SECOP)
+# Extracción desde SECOP (Socrata)
 # -----------------------------------------
+
+print("\n[3] Extrayendo datos desde la API de Datos Abiertos (SECOP)...")
+
 client = Socrata("www.datos.gov.co", None)
 
 query = """
@@ -73,33 +64,46 @@ AND
 LIMIT 200000
 """
 
+print("Consulta aplicada:")
+print(query)
+
 results = client.get("jbjy-vk9h", query=query)
-print(f"Registros extraídos: {len(results)}")
+print(f"Registros extraídos desde la API: {len(results):,}")
+
 
 # -----------------------------------------
-# Guardar JSON línea a línea (raw)
+# Persistencia RAW (JSON línea a línea)
 # -----------------------------------------
+
+print("\n[4] Guardando datos en capa RAW (JSON línea a línea)...")
+
 with open(JSON_PATH, "w", encoding="utf-8") as f:
     for record in results:
         f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
-print(f"Archivo RAW guardado en: {JSON_PATH}")
+print("Archivo RAW generado correctamente")
+print(f"  - Ubicación: {JSON_PATH}")
+
 
 # -----------------------------------------
-# Lectura Spark JSON
+# Lectura del JSON con Spark
 # -----------------------------------------
+
+print("\n[5] Leyendo archivo RAW con Spark...")
+
 df_raw = spark.read.json(JSON_PATH)
 
-print(f"Registros leídos: {df_raw.count()}")
-print(f"Columnas: {len(df_raw.columns)}")
+print("Lectura completada")
+print(f"  - Registros leídos : {df_raw.count():,}")
+print(f"  - Columnas totales : {len(df_raw.columns)}")
+
 
 # -----------------------------------------
 # Normalización de nombres de columnas
-
-
-# (solo nombres, NO tipos)
-
 # -----------------------------------------
+
+print("\n[6] Normalizando nombres de columnas...")
+
 def normalize_columns(df):
     for c in df.columns:
         new_c = re.sub(r"[ ,;{}()\n\t=]", "_", c.strip().lower())
@@ -108,13 +112,19 @@ def normalize_columns(df):
 
 df_bronze = normalize_columns(df_raw)
 
+print("Normalización completada")
+print("Ejemplo de columnas normalizadas:")
+print(df_bronze.columns[:10])
+
+
+# -----------------------------------------
+# Selección de columnas relevantes (Bronze)
 # -----------------------------------------
 
-# Selección de columnas (MISMA SALIDA, MENOS RUIDO)
-# -----------------------------------------
+print("\n[7] Seleccionando columnas relevantes para la capa Bronze...")
+
 columnas_bronze = [
-    # CORE (contrato / entidad)
-    # ---------------------------
+    # CORE
     "id_contrato",
     "referencia_del_contrato",
     "proceso_de_compra",
@@ -136,9 +146,7 @@ columnas_bronze = [
     "tipodocproveedor",
     "codigo_proveedor",
 
-    # ---------------------------
     # FINANCIERAS
-    # ---------------------------
     "valor_del_contrato",
     "valor_pagado",
     "valor_pendiente_de_pago",
@@ -155,9 +163,7 @@ columnas_bronze = [
     "sistema_general_de_participaciones",
     "habilita_pago_adelantado",
 
-    # ---------------------------
-    # CONTEXTO / FEATURE ENGINEERING
-    # ---------------------------
+    # CONTEXTO
     "destino_gasto",
     "origen_de_los_recursos",
     "es_pyme",
@@ -172,22 +178,28 @@ columnas_bronze = [
     "localizaci_n"
 ]
 
-
-# Mantener solo columnas existentes (robusto a cambios de esquema)
 columnas_bronze = [c for c in columnas_bronze if c in df_bronze.columns]
+
+print(f"Columnas finales seleccionadas: {len(columnas_bronze)}")
 
 df_bronze = df_bronze.select(*columnas_bronze)
 
-# -----------------------------------------
-# Escritura Delta Bronze (MISMA SALIDA)
+print("Selección completada")
 
-# Escritura Delta Bronze
-# -----------------------------------------
-print("Escribiendo capa Bronze...")
 
-df_bronze.write.format("delta") \
+# -----------------------------------------
+# Escritura en Delta Lake – Bronze
+# -----------------------------------------
+
+print("\n[8] Escribiendo datos en capa Bronze (Delta Lake)...")
+
+df_bronze.write \
+    .format("delta") \
     .mode("overwrite") \
     .option("overwriteSchema", "true") \
     .save(BRONZE_PATH)
 
-print("Ingesta Bronze completada correctamente ✅")
+print("\nIngesta Bronze completada correctamente ✅")
+print(f"Datos disponibles en: {BRONZE_PATH}")
+print("Fin del Notebook 01")
+print("="*70)

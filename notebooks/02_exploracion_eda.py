@@ -1,44 +1,37 @@
-# %% [markdown]
-# # Notebook 02: Análisis Exploratorio de Datos (EDA)
-#
-# **Objetivo**: Entender la distribución de las variables, identificar valores nulos y outliers.
-#
-# ## Actividades:
-# 1. Cargar datos desde Parquet
-# 2. Calcular estadísticas descriptivas
-# 3. Analizar distribución por departamento
-# 4. Identificar valores faltantes
-# 5. Detectar outliers en valores de contratos
+# ============================================================
+# NOTEBOOK 02: EXPLORACIÓN EDA
+# ============================================================
 
-# %%
-# Importar librerías
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    col, count, sum as spark_sum, avg, min as spark_min,
-    max as spark_max, stddev, isnan, when, isnull, desc
-)
+from pyspark.sql.functions import (col, count, sum as spark_sum, avg, min as spark_min, max as spark_max, stddev, isnan, when, isnull, desc)
+import os
+import json
+import re
+from sodapy import Socrata
 from delta import configure_spark_with_delta_pip
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
 
-# %%
-# Configurar SparkSession
+
+# -----------------------------------------
+# Inicialización de Spark
+# -----------------------------------------
+
 builder = (
     SparkSession.builder
-    .appName("SECOP_EDA")
+    .appName("SECOP_Lakehouse")
     .master("spark://spark-master:7077")
-    .config("spark.executor.memory", "2g")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
 )
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
-print(f"Spark Version: {spark.version}")
+print("Spark inicializado correctamente")
+print(f"  - Spark Version : {spark.version}")
+print(f"  - Spark Master  : {spark.sparkContext.master}")
 
-# %%
+# -----------------------------------------
 # Cargar datos desde Parquet
+# -----------------------------------------
 
 bronze_path = "/opt/spark-data/lakehouse/bronze/secop"
 print(f"Cargando datos desde Bronze: {bronze_path}")
@@ -48,26 +41,34 @@ df = spark.read.format("delta").load(bronze_path)
 print(f"Registros cargados: {df.count():,}")
 print(f"Columnas: {len(df.columns)}")
 
-# %%
+# -----------------------------------------
 # Mostrar esquema
+# -----------------------------------------
+
 print("\n=== ESQUEMA DEL DATASET ===")
 df.printSchema()
 
-# %%
+# -----------------------------------------
 # Primeras filas
+# -----------------------------------------
+
 print("\n=== PRIMERAS 10 FILAS ===")
 df.show(10, truncate=True)
 
-# %%
+# -----------------------------------------
 # Estadísticas descriptivas generales
+# -----------------------------------------
+
 print("\n=== ESTADÍSTICAS DESCRIPTIVAS ===")
 df.describe().show()
 
-# %%
+# -----------------------------------------
 # Análisis de valores nulos por columna
+# -----------------------------------------
+
 print("\n=== ANÁLISIS DE VALORES NULOS ===")
 
-# Contar nulos por cada columna
+
 null_counts = df.select([
     count(when(isnull(c) | isnan(c), c)).alias(c)
     for c in df.columns
@@ -81,11 +82,11 @@ null_df = null_df.sort_values('null_count', ascending=False)
 
 print(null_df[null_df['null_count'] > 0])
 
-# %%
+# -----------------------------------------
 # Análisis de la variable objetivo: Valor del Contrato
-# Nota: Ajustar nombre de columna según dataset real
+# -----------------------------------------
 
-# Identificar columna de valor (puede variar)
+# Análisis de la variable objetivo: Valor del Contrato
 valor_cols = [c for c in df.columns if 'valor' in c.lower() or 'precio' in c.lower()]
 print(f"\n=== COLUMNAS DE VALOR ENCONTRADAS ===")
 for col_name in valor_cols:
@@ -117,11 +118,11 @@ if valor_cols:
         count(when(col(valor_col + "_num") >= 1000000000, True)).alias("> 1B")
     ).show()
 
-# %%
 
-
-# %%
+# -----------------------------------------
 # Análisis por Tipo de Contrato
+# -----------------------------------------
+
 tipo_cols = [c for c in df.columns if 'tipo' in c.lower() and 'contrato' in c.lower()]
 if tipo_cols:
     tipo_col = tipo_cols[0]
@@ -133,9 +134,9 @@ if tipo_cols:
         .limit(10)
 
     df_tipo.show(truncate=False)
-
-# %%
+# -----------------------------------------
 # Análisis por Estado del Contrato
+# ---------------------------------------
 estado_cols = [c for c in df.columns if 'estado' in c.lower()]
 if estado_cols:
     estado_col = estado_cols[0]
@@ -147,8 +148,9 @@ if estado_cols:
 
     df_estado.show(truncate=False)
 
-# %%
-# Análisis de Top Proveedores
+# -----------------------------------------
+# Análisis de Proveedores
+# ---------------------------------------
 proveedor_cols = [c for c in df.columns if 'proveedor' in c.lower()]
 if proveedor_cols:
     proveedor_col = proveedor_cols[0]
@@ -164,8 +166,10 @@ if proveedor_cols:
 
     df_prov.show(truncate=False)
 
-# %%
-# Detección de Outliers en Valor del Contrato
+# -----------------------------------------
+# Detección de Outliers
+# ---------------------------------------
+
 if valor_cols:
     print(f"\n=== DETECCIÓN DE OUTLIERS ===")
 
@@ -194,8 +198,10 @@ if valor_cols:
 
     print(f"Outliers detectados: {num_outliers:,} ({(num_outliers/df.count())*100:.2f}%)")
 
-# %%
-# Análisis temporal (si hay columna de fecha)
+# -----------------------------------------
+# Análisis temporal
+# ---------------------------------------
+
 fecha_cols = [c for c in df.columns if 'fecha' in c.lower()]
 if fecha_cols:
     fecha_col = fecha_cols[0]
@@ -216,8 +222,10 @@ if fecha_cols:
         .orderBy("anio") \
         .show()
 
-# %%
-# Resumen final del EDA
+# -----------------------------------------
+# Resumen Final
+# ---------------------------------------
+
 print("\n" + "="*60)
 print("RESUMEN DEL ANÁLISIS EXPLORATORIO")
 print("="*60)
@@ -232,11 +240,11 @@ print(f"✓ Análisis de outliers: Completado")
 print(f"✓ Gráficos generados: /opt/spark-data/processed/")
 print("="*60)
 
-# %%
-# Guardar dataset limpio para próximos notebooks
-output_path = "/opt/spark-data/processed/secop_eda.parquet"
-df.write.mode("overwrite").parquet(output_path)
-print(f"\nDataset guardado en: {output_path}")
+
+
+
+print("Fin del Notebook 02")
+print("="*70)
 
 # %%
 # Detener SparkSession

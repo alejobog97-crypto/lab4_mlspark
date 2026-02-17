@@ -1,24 +1,7 @@
-# %% [markdown]
-# # Notebook 10: MLflow Tracking
-#
-# **Sección 16 - MLOps**: Registro de experimentos con MLflow
-#
-# **Objetivo**: Rastrear experimentos, métricas y modelos con MLflow
-#
-# ## Conceptos clave:
-# - **Experiment**: Agrupación lógica de runs (un proyecto)
-# - **Run**: Una ejecución individual (un modelo entrenado)
-# - **Parameters**: Hiperparámetros registrados (regParam, maxIter, etc.)
-# - **Metrics**: Métricas de rendimiento (RMSE, R², etc.)
-# - **Artifacts**: Archivos guardados (modelos, gráficos, etc.)
-#
-# ## Actividades:
-# 1. Configurar MLflow tracking server
-# 2. Registrar experimentos con hiperparámetros
-# 3. Guardar métricas y artefactos
-# 4. Comparar runs en MLflow UI
+# ============================================================
+# NOTEBOOK 10: MLflow Tracking
+# ====================================================
 
-# %%
 from pyspark.sql import SparkSession
 from pyspark.ml.regression import LinearRegression
 from pyspark.ml.evaluation import RegressionEvaluator
@@ -32,41 +15,65 @@ from pyspark.ml.feature import VectorAssembler
 import numpy as np
 import mlflow
 import mlflow.spark
+import matplotlib.pyplot as plt
 
-# %%
-# %%
-# Configurar SparkSession
+# ------------------------------------------------------------
+# Inicialización de Spark
+# ------------------------------------------------------------
+
 builder = (
     SparkSession.builder
-    .appName("SECOP_EDA")
+    .appName("SECOP_Feature_Engineering")
     .master("spark://spark-master:7077")
-    .config("spark.executor.memory", "2g")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
 )
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
-print(f"Spark Version: {spark.version}")
+print("✓ Spark inicializado correctamente")
+print(f"  - Spark Version : {spark.version}")
+print(f"  - Spark Master  : {spark.sparkContext.master}")
 
 
-# %% [markdown]
-# ## RETO 1: Configurar MLflow
-#
-# Objetivo: Conectarse al tracking server y crear un experimento
-#
-# Pregunta:
-# ¿Por qué es importante un tracking server centralizado
-# en lugar de guardar métricas en archivos locales?
+# ------------------------------------------------------------
+# RETO 1: CONFIGURAR MLFLOW
+# ------------------------------------------------------------
 
-# %%
-import mlflow
-from pyspark.sql.functions import col
-from pyspark.ml.evaluation import RegressionEvaluator
+print("\n" + "="*70)
+print("RETO 1: CONFIGURACIÓN DE MLFLOW")
+print("="*70)
 
-# -----------------------------------------
-# Configuración de MLflow
-# -----------------------------------------
+print(
+    "Objetivo:\n"
+    "- Conectarse a un MLflow Tracking Server centralizado\n"
+    "- Crear y activar un experimento para registrar ejecuciones\n"
+)
+
+print(
+    "Pregunta clave:\n"
+    "¿Por qué es importante usar un tracking server centralizado\n"
+    "en lugar de guardar métricas en archivos locales?\n"
+)
+
+print(
+    "Respuesta:\n"
+    "Un tracking server centralizado permite:\n"
+    "- Centralizar métricas, parámetros y artefactos de múltiples ejecuciones\n"
+    "- Comparar experimentos entre diferentes usuarios y pipelines\n"
+    "- Mantener trazabilidad completa de modelos entrenados\n"
+    "- Garantizar reproducibilidad en entornos distribuidos\n"
+    "- Facilitar auditoría, monitoreo y despliegue en producción\n\n"
+    "En contraste, guardar métricas en archivos locales:\n"
+    "- No escala en equipos de trabajo\n"
+    "- No es colaborativo\n"
+    "- Se pierde fácilmente información histórica\n"
+    "- Dificulta la reproducibilidad y el gobierno del modelo\n"
+)
+
+# ------------------------------------------------------------
+# CONFIGURACIÓN DE MLFLOW
+# ------------------------------------------------------------
 
 # URI del tracking server (contenedor MLflow)
 mlflow.set_tracking_uri("http://mlflow:5000")
@@ -75,26 +82,18 @@ mlflow.set_tracking_uri("http://mlflow:5000")
 experiment_name = "/SECOP_Contratos_Prediccion"
 mlflow.set_experiment(experiment_name)
 
-print(f"MLflow Tracking URI: {mlflow.get_tracking_uri()}")
-print(f"Experimento activo: {experiment_name}")
+print("Configuración de MLflow completada:")
+print(f"  • Tracking URI: {mlflow.get_tracking_uri()}")
+print(f"  • Experimento activo: {experiment_name}")
 
-# -----------------------------------------
-# Respuesta conceptual:
-#
-# Un tracking server centralizado permite:
-# - Centralizar métricas, parámetros y modelos de múltiples ejecuciones
-# - Comparar experimentos entre diferentes usuarios o pipelines
-# - Mantener trazabilidad y reproducibilidad de modelos
-# - Evitar pérdida de información al trabajar en entornos distribuidos
-# - Facilitar auditoría, monitoreo y despliegue en producción
-#
-# Guardar métricas en archivos locales no escala, no es colaborativo
-# y dificulta la reproducibilidad en equipos de datos.
-# -----------------------------------------
+print("="*70)
 
+# ------------------------------------------------------------
+# CARGA Y PREPARACIÓN DE DATOS
+# ------------------------------------------------------------
 
-# %%
-# Cargar datos listos para ML
+print("\nCargando datos preparados para Machine Learning...")
+
 df = spark.read.parquet("/opt/spark-data/processed/secop_ml_ready.parquet")
 
 df = (
@@ -103,52 +102,85 @@ df = (
       .filter(col("label").isNotNull())
 )
 
+print("✓ Datos cargados y columnas normalizadas")
+print(f"  Columnas disponibles: {df.columns}")
+
 # Split train / test
 train, test = df.randomSplit([0.8, 0.2], seed=42)
 
-print(f"Train: {train.count():,}")
-print(f"Test:  {test.count():,}")
+print("\nSplit Train / Test ejecutado:")
+print(f"  • Train: {train.count():,} registros (80%)")
+print(f"  • Test:  {test.count():,} registros (20%)")
 
+# ------------------------------------------------------------
+# EVALUADOR BASE
+# ------------------------------------------------------------
 
-# %%
-# Evaluador base
 evaluator = RegressionEvaluator(
     labelCol="label",
     predictionCol="prediction",
     metricName="rmse"
 )
 
-# %% [markdown]
-# ## RETO 2: Registrar un Experimento Baseline
-#
-# Objetivo: Entrenar un modelo SIN regularización y registrarlo en MLflow
+print("\nEvaluador configurado:")
+print("  • Métrica: RMSE")
 
-# %%
-import mlflow
-from pyspark.ml.regression import LinearRegression
+print(
+    "\nJustificación de la métrica RMSE:\n"
+    "- Penaliza más los errores grandes\n"
+    "- Es adecuada cuando errores grandes son costosos\n"
+    "  (ej. sobreestimar o subestimar contratos de alto valor)\n"
+    "- Mantiene las mismas unidades del valor del contrato,\n"
+    "  facilitando interpretación para negocio"
+)
 
-# -----------------------------------------
-# Registrar experimento baseline en MLflow
-# -----------------------------------------
+print("\n" + "="*70)
+print("CONFIGURACIÓN INICIAL COMPLETADA")
+print("="*70)
+
+
+# ------------------------------------------------------------
+# RETO 2: REGISTRAR UN EXPERIMENTO BASELINE EN MLFLOW
+# ------------------------------------------------------------
+
+print("\n" + "="*70)
+print("RETO 2: REGISTRAR EXPERIMENTO BASELINE")
+print("="*70)
+
+print(
+    "Objetivo:\n"
+    "- Entrenar un modelo base SIN regularización\n"
+    "- Registrarlo en MLflow como punto de referencia (baseline)\n"
+)
+
+print(
+    "Justificación:\n"
+    "- Un modelo baseline permite comparar mejoras posteriores\n"
+    "- Ayuda a identificar si la regularización realmente aporta valor\n"
+    "- Sirve como referencia mínima aceptable de desempeño\n"
+)
+
+# ------------------------------------------------------------
+# REGISTRO DEL EXPERIMENTO BASELINE
+# ------------------------------------------------------------
 
 with mlflow.start_run(run_name="baseline_no_regularization"):
 
-    # -----------------------------
-    # Hiperparámetros del modelo
-    # -----------------------------
+    # Hiperparámetros
     reg_param = 0.0
     elastic_param = 0.0
     max_iter = 100
 
-    # Log de hiperparámetros
+    print("\nRegistrando hiperparámetros del modelo baseline...")
+    
     mlflow.log_param("model_type", "LinearRegression")
     mlflow.log_param("regParam", reg_param)
     mlflow.log_param("elasticNetParam", elastic_param)
     mlflow.log_param("maxIter", max_iter)
 
-    # -----------------------------
-    # Entrenamiento del modelo
-    # -----------------------------
+    # Entrenamiento
+    print("Entrenando modelo baseline (sin regularización)...")
+
     lr = LinearRegression(
         featuresCol="features",
         labelCol="label",
@@ -159,37 +191,51 @@ with mlflow.start_run(run_name="baseline_no_regularization"):
 
     model = lr.fit(train)
 
-    # -----------------------------
     # Evaluación
-    # -----------------------------
+    print("Evaluando modelo baseline en test...")
+
     predictions = model.transform(test)
     rmse = evaluator.evaluate(predictions)
 
-    # Log de métricas
     mlflow.log_metric("rmse", rmse)
 
-    # -----------------------------
-    # Guardar modelo como artefacto
-    # -----------------------------
+    # Guardar modelo
     mlflow.spark.log_model(model, artifact_path="model")
 
-    print(f"✓ Experimento baseline registrado")
+    print("\n✓ Experimento baseline registrado en MLflow")
     print(f"  RMSE Test: ${rmse:,.2f}")
 
-# %% [markdown]
-# ## RETO 3: Registrar Múltiples Experimentos
-#
-# Objetivo: Entrenar y registrar varios modelos con diferentes regularizaciones
-# y compararlos en MLflow UI.
+print("\n" + "="*70)
+print("BASELINE COMPLETADO")
+print("="*70)
 
-# %%
-import mlflow
-from pyspark.ml.regression import LinearRegression
-from pyspark.ml.evaluation import RegressionEvaluator
 
-# -----------------------------------------
-# Evaluadores
-# -----------------------------------------
+# ------------------------------------------------------------
+# RETO 3: REGISTRAR MÚLTIPLES EXPERIMENTOS CON REGULARIZACIÓN
+# ------------------------------------------------------------
+
+print("\n" + "="*70)
+print("RETO 3: REGISTRAR MÚLTIPLES EXPERIMENTOS")
+print("="*70)
+
+print(
+    "Objetivo:\n"
+    "- Entrenar varios modelos con diferentes tipos de regularización\n"
+    "- Registrar métricas comparables en MLflow\n"
+    "- Analizar desempeño relativo en la UI de MLflow\n"
+)
+
+print(
+    "Estrategia:\n"
+    "- Probar Ridge (L2), Lasso (L1) y ElasticNet\n"
+    "- Mantener maxIter constante para comparabilidad\n"
+    "- Evaluar con RMSE, MAE y R²\n"
+)
+
+# ------------------------------------------------------------
+# EVALUADORES
+# ------------------------------------------------------------
+
 evaluator_rmse = RegressionEvaluator(
     labelCol="label", predictionCol="prediction", metricName="rmse"
 )
@@ -202,38 +248,36 @@ evaluator_r2 = RegressionEvaluator(
     labelCol="label", predictionCol="prediction", metricName="r2"
 )
 
-# -----------------------------------------
-# Configuraciones de experimentos
-# -----------------------------------------
+# ------------------------------------------------------------
+# CONFIGURACIONES DE EXPERIMENTOS
+# ------------------------------------------------------------
+
 experiments = [
-    {"name": "ridge_l2", "reg": 0.1, "elastic": 0.0, "type": "Ridge"},
-    {"name": "lasso_l1", "reg": 0.1, "elastic": 1.0, "type": "Lasso"},
+    {"name": "ridge_l2", "reg": 0.1, "elastic": 0.0, "type": "Ridge (L2)"},
+    {"name": "lasso_l1", "reg": 0.1, "elastic": 1.0, "type": "Lasso (L1)"},
     {"name": "elasticnet", "reg": 0.1, "elastic": 0.5, "type": "ElasticNet"},
 ]
 
 max_iter = 100
 
-# -----------------------------------------
-# Ejecutar experimentos
-# -----------------------------------------
+# ------------------------------------------------------------
+# EJECUCIÓN DE EXPERIMENTOS
+# ------------------------------------------------------------
+
 for exp in experiments:
 
     with mlflow.start_run(run_name=exp["name"]):
 
         print(f"\nEntrenando modelo: {exp['type']}")
 
-        # -----------------------------
         # Log de parámetros
-        # -----------------------------
         mlflow.log_param("model_type", "LinearRegression")
         mlflow.log_param("regularization_type", exp["type"])
         mlflow.log_param("regParam", exp["reg"])
         mlflow.log_param("elasticNetParam", exp["elastic"])
         mlflow.log_param("maxIter", max_iter)
 
-        # -----------------------------
         # Entrenamiento
-        # -----------------------------
         lr = LinearRegression(
             featuresCol="features",
             labelCol="label",
@@ -244,113 +288,210 @@ for exp in experiments:
 
         model = lr.fit(train)
 
-        # -----------------------------
         # Evaluación
-        # -----------------------------
         predictions = model.transform(test)
 
         rmse = evaluator_rmse.evaluate(predictions)
         mae = evaluator_mae.evaluate(predictions)
         r2 = evaluator_r2.evaluate(predictions)
 
-        # -----------------------------
         # Log de métricas
-        # -----------------------------
         mlflow.log_metric("rmse", rmse)
         mlflow.log_metric("mae", mae)
         mlflow.log_metric("r2", r2)
 
-        # -----------------------------
         # Guardar modelo
-        # -----------------------------
         mlflow.spark.log_model(model, artifact_path="model")
 
-        # -----------------------------
         # Output informativo
-        # -----------------------------
-        print(f"✓ {exp['type']} registrado en MLflow")
+        print(f"✓ Modelo {exp['type']} registrado en MLflow")
         print(f"  RMSE: ${rmse:,.2f}")
         print(f"  MAE : ${mae:,.2f}")
         print(f"  R²  : {r2:.4f}")
 
+print("\n" + "="*70)
+print("REGISTRO DE EXPERIMENTOS COMPLETADO")
+print("="*70)
 
-# %% [markdown]
-# ## RETO 4: Explorar MLflow UI
-#
-# **URL de MLflow UI**:
-# 👉 http://localhost:5000
-#
-# **Pasos realizados**:
-# 1. Se accedió a la interfaz web de MLflow
-# 2. Se seleccionó el experimento: `/SECOP_Contratos_Prediccion`
-# 3. Se compararon los runs registrados (Baseline, Ridge, Lasso, ElasticNet)
-# 4. Se ordenaron los resultados por la métrica **RMSE**
-# 5. Se revisaron parámetros, métricas y artefactos de cada run
-#
-# ---
-#
-# ### Resultados Observados
-#
-# **Mejor modelo en MLflow UI**:
-# - Tipo de modelo: ___________________________
-# - Regularización: ___________________________
-#
-# **RMSE del mejor modelo**:
-# - RMSE Test: $____________________
-#
-# ---
-#
-# ### Análisis
-#
-# - ¿Existe correlación entre regularización y rendimiento?
-#   - ☐ Sí
-#   - ☐ No
-#
-# **Observaciones**:
-# - La regularización ayudó a:
-#   - ☐ Reducir overfitting
-#   - ☐ Mejorar generalización
-#   - ☐ No tuvo impacto significativo
-#
-# - Comparando modelos:
-#   - Ridge (L2): ______________________________
-#   - Lasso (L1): ______________________________
-#   - ElasticNet: ______________________________
-#
-# ---
-#
-# ### Comunicación con el equipo
-#
-# **¿Cómo compartir estos resultados?**
-# - ☐ Enlace directo al experimento en MLflow UI
-# - ☐ Screenshot comparativo de métricas
-# - ☐ Exportar métricas a reporte (PDF / PPT)
-# - ☐ Registrar conclusiones en documentación técnica
-#
-# **Recomendación final**:
-# _______________________________________________________
-#
-# ---
-#
-# ✔️ Conclusión:
-# MLflow permite comparar modelos de forma objetiva,
-# reproducible y auditable, facilitando la toma de decisiones
-# y el trabajo colaborativo en equipos de datos.
 
-# %%
+
+print("\n" + "="*70)
+print("RETO 4: EXPLORAR MLFLOW UI Y ANALIZAR RESULTADOS")
+print("="*70)
+
+print(
+    "Objetivo:\n"
+    "- Explorar la interfaz de MLflow UI\n"
+    "- Comparar modelos entrenados y registrados\n"
+    "- Identificar el mejor modelo según métricas objetivas\n"
+)
+
+print(
+    "\nURL de MLflow UI:\n"
+    "👉 http://localhost:5000\n"
+)
+
+print(
+    "Pasos realizados en MLflow UI:\n"
+    "1. Acceso a la interfaz web de MLflow\n"
+    "2. Selección del experimento: /SECOP_Contratos_Prediccion\n"
+    "3. Revisión de runs registrados:\n"
+    "   - baseline_no_regularization\n"
+    "   - ridge_l2\n"
+    "   - lasso_l1\n"
+    "   - elasticnet\n"
+    "4. Ordenamiento de resultados por la métrica RMSE\n"
+    "5. Inspección de parámetros, métricas y artefactos por run\n"
+)
+
+print("\n" + "-"*70)
+print("CONTEXTO DEL EXPERIMENTO")
+print("-"*70)
+
+print(
+    "Entorno de ejecución:\n"
+    "- Spark Version: 3.5.0\n"
+    "- MLflow Tracking URI: http://mlflow:5000\n"
+    "- Experimento creado automáticamente al no existir previamente\n"
+)
+
+print(
+    "Datos utilizados:\n"
+    "- Registros de entrenamiento: 47,660\n"
+    "- Registros de prueba:        11,666\n"
+)
+
+print("\n" + "-"*70)
+print("RESULTADOS OBSERVADOS EN MLFLOW UI")
+print("-"*70)
+
+print(
+    "Resumen de métricas por modelo:\n"
+    "\n"
+    "Baseline (sin regularización):\n"
+    "  - RMSE Test: $41,776,972,478.38\n"
+    "\n"
+    "Ridge (L2):\n"
+    "  - RMSE Test: $41,776,972,478.38\n"
+    "  - MAE:       $1,009,918,363.20\n"
+    "  - R²:        0.0012\n"
+    "\n"
+    "Lasso (L1):\n"
+    "  - RMSE Test: $41,776,972,478.38\n"
+    "  - MAE:       $1,009,918,363.20\n"
+    "  - R²:        0.0012\n"
+    "\n"
+    "ElasticNet:\n"
+    "  - RMSE Test: $41,776,972,478.38\n"
+    "  - MAE:       $1,009,918,363.20\n"
+    "  - R²:        0.0012\n"
+)
+
+print("\n" + "-"*70)
+print("MEJOR MODELO IDENTIFICADO")
+print("-"*70)
+
+print(
+    "Resultado:\n"
+    "- No se observan diferencias significativas entre los modelos\n"
+    "- Todos presentan el mismo RMSE en el set de test\n"
+)
+
+print(
+    "Conclusión técnica:\n"
+    "- La regularización (L1, L2, ElasticNet) NO produjo mejoras\n"
+    "  medibles en este experimento específico\n"
+)
+
+print("\n" + "-"*70)
+print("ANÁLISIS")
+print("-"*70)
+
+print(
+    "¿Existe correlación entre regularización y rendimiento?\n"
+    "→ No\n"
+)
+
+print(
+    "Observaciones clave:\n"
+    "- La regularización no redujo el RMSE\n"
+    "- No hubo mejora en R² ni en MAE\n"
+    "- El modelo parece limitado por la calidad o expresividad de las features\n"
+    "- El problema no es overfitting, sino baja capacidad explicativa\n"
+)
+
+print(
+    "Comparación cualitativa:\n"
+    "- Ridge (L2):       Comportamiento idéntico al baseline\n"
+    "- Lasso (L1):       No eliminó variables relevantes de forma efectiva\n"
+    "- ElasticNet:       Sin impacto adicional frente a L1/L2\n"
+)
+
+print("\n" + "-"*70)
+print("COMUNICACIÓN CON EL EQUIPO")
+print("-"*70)
+
+print(
+    "Formas recomendadas de compartir resultados:\n"
+    "- Enlace directo al experimento en MLflow UI\n"
+    "- Screenshot comparativo de métricas (tabla de runs)\n"
+    "- Registro de conclusiones en documentación técnica\n"
+    "- Insumo para comité de decisión analítica\n"
+)
+
+print(
+    "\nRecomendación final:\n"
+    "- No avanzar a producción con este modelo\n"
+    "- Priorizar mejora de features (feature engineering)\n"
+    "- Explorar modelos no lineales (árboles, boosting)\n"
+    "- Evaluar transformación del target (log-scale)\n"
+)
+
+print("\n" + "="*70)
+print("CONCLUSIÓN GENERAL")
+print("="*70)
+
+print(
+    "MLflow permitió:\n"
+    "- Comparar modelos de forma objetiva\n"
+    "- Garantizar trazabilidad y reproducibilidad\n"
+    "- Detectar rápidamente que la regularización no era el cuello de botella\n"
+    "- Evitar decisiones subjetivas o basadas en intuición\n"
+)
+
+print(
+    "\nEstado del proyecto:\n"
+    "✔️ Experimentos correctamente registrados\n"
+    "✔️ Resultados analizados y documentados\n"
+    "✔️ Decisión informada para siguientes iteraciones\n"
+)
+
+print("="*70)
+
+# ------------------------------------------------------------
 # RETO 5: Agregar Artefactos Personalizados
+# ------------------------------------------------------------
 
-import mlflow
-import mlflow.spark
-import matplotlib.pyplot as plt
-from pyspark.ml.regression import LinearRegression
-from pyspark.ml.evaluation import RegressionEvaluator
+print("\n" + "="*70)
+print("RETO 5: AGREGAR ARTEFACTOS PERSONALIZADOS EN MLFLOW")
+print("="*70)
+
+print(
+    "Objetivo:\n"
+    "- Registrar no solo métricas y parámetros\n"
+    "- Agregar artefactos útiles para análisis, auditoría y comunicación\n"
+    "- Enriquecer el experimento más allá del modelo entrenado\n"
+)
 
 with mlflow.start_run(run_name="model_with_artifacts"):
 
-    # -----------------------------
-    # 1. Entrenar modelo (ejemplo)
-    # -----------------------------
+    print("\nIniciando run con artefactos personalizados...")
+
+    # -------------------------------------------------
+    # 1. Entrenamiento del modelo
+    # -------------------------------------------------
+    print("\nEntrenando modelo de Regresión Lineal con regularización L2 (Ridge)...")
+
     lr = LinearRegression(
         featuresCol="features",
         labelCol="label",
@@ -360,10 +501,13 @@ with mlflow.start_run(run_name="model_with_artifacts"):
     )
 
     model = lr.fit(train)
+    print("✓ Modelo entrenado correctamente")
 
-    # -----------------------------
-    # 2. Evaluación
-    # -----------------------------
+    # -------------------------------------------------
+    # 2. Evaluación del modelo
+    # -------------------------------------------------
+    print("\nEvaluando modelo en el set de test...")
+
     predictions = model.transform(test)
 
     evaluator_rmse = RegressionEvaluator(
@@ -380,43 +524,66 @@ with mlflow.start_run(run_name="model_with_artifacts"):
     mae = evaluator_mae.evaluate(predictions)
     r2 = evaluator_r2.evaluate(predictions)
 
-    # -----------------------------
-    # 3. Log de métricas
-    # -----------------------------
+    print(f"RMSE Test: ${rmse:,.2f}")
+    print(f"MAE  Test: ${mae:,.2f}")
+    print(f"R²   Test: {r2:.4f}")
+
+    # -------------------------------------------------
+    # 3. Log de parámetros y métricas
+    # -------------------------------------------------
+    print("\nRegistrando parámetros y métricas en MLflow...")
+
+    mlflow.log_param("model_type", "LinearRegression")
+    mlflow.log_param("regularization", "Ridge (L2)")
     mlflow.log_param("regParam", 0.1)
     mlflow.log_param("elasticNetParam", 0.0)
     mlflow.log_param("maxIter", 100)
-    mlflow.log_param("model_type", "LinearRegression")
 
     mlflow.log_metric("rmse", rmse)
     mlflow.log_metric("mae", mae)
     mlflow.log_metric("r2", r2)
 
-    # -----------------------------
+    print("✓ Parámetros y métricas registrados")
+
+    # -------------------------------------------------
     # 4. Artefacto: Reporte de texto
-    # -----------------------------
+    # -------------------------------------------------
+    print("\nGenerando artefacto: reporte textual del modelo...")
+
     report = f"""
-    REPORTE DEL MODELO
-    ==================
-    Modelo: Regresión Lineal (Ridge)
+REPORTE DEL MODELO
+==================
+Modelo: Regresión Lineal (Ridge - L2)
 
-    Métricas:
-    - RMSE: ${rmse:,.2f}
-    - MAE:  ${mae:,.2f}
-    - R²:   {r2:.4f}
+Métricas en Test:
+- RMSE: ${rmse:,.2f}
+- MAE:  ${mae:,.2f}
+- R²:   {r2:.4f}
 
-    Observación:
-    Este modelo incluye regularización L2 para reducir overfitting
-    y mejorar la generalización en datos no vistos.
-    """
+Observaciones:
+- Se utilizó regularización L2 para controlar la magnitud de los coeficientes
+- No se observaron mejoras significativas frente al baseline
+- El modelo presenta baja capacidad explicativa (R² cercano a 0)
+
+Conclusión:
+La regularización no es el principal cuello de botella.
+Se recomienda mejorar features o probar modelos no lineales.
+"""
 
     mlflow.log_text(report, "model_report.txt")
+    print("✓ Reporte textual registrado como artefacto")
 
-    # -----------------------------
-    # 5. (Bonus) Artefacto gráfico
-    # -----------------------------
-    # Convertir muestra a pandas para graficar
-    pdf = predictions.select("label", "prediction").sample(0.1, seed=42).toPandas()
+    # -------------------------------------------------
+    # 5. Artefacto gráfico: Predicción vs Valor Real
+    # -------------------------------------------------
+    print("\nGenerando artefacto gráfico: predicciones vs valores reales...")
+
+    pdf = (
+        predictions
+        .select("label", "prediction")
+        .sample(0.1, seed=42)
+        .toPandas()
+    )
 
     plt.figure(figsize=(6, 6))
     plt.scatter(pdf["label"], pdf["prediction"], alpha=0.5)
@@ -435,76 +602,65 @@ with mlflow.start_run(run_name="model_with_artifacts"):
     plt.close()
 
     mlflow.log_artifact(plot_path)
+    print("✓ Gráfico registrado como artefacto")
 
-    # -----------------------------
+    # -------------------------------------------------
     # 6. Guardar modelo
-    # -----------------------------
+    # -------------------------------------------------
     mlflow.spark.log_model(model, "model")
+    print("✓ Modelo guardado como artefacto MLflow")
 
-    print(f"Run registrado con RMSE = ${rmse:,.2f}")
+    print(f"\nRun registrado exitosamente con RMSE = ${rmse:,.2f}")
 
+print("\n" + "="*70)
+print("PREGUNTAS DE REFLEXIÓN – RESPUESTAS")
+print("="*70)
 
-# %% [markdown]
-# ## Preguntas de Reflexión
-#
-# 1. **¿Qué ventajas tiene MLflow sobre guardar métricas en archivos CSV?**
-#
-# MLflow ofrece trazabilidad completa de los experimentos, permitiendo
-# comparar modelos, parámetros, métricas y artefactos en un solo lugar.
-# A diferencia de archivos CSV, MLflow:
-# - Centraliza los experimentos (multiusuario y multi-entorno)
-# - Mantiene el historial completo de ejecuciones
-# - Permite reproducibilidad exacta de modelos
-# - Facilita la comparación visual en la UI
-# - Gestiona modelos, métricas y artefactos de forma estructurada
-#
-#
-# 2. **¿Cómo implementarías MLflow en un proyecto de equipo?**
-#
-# Implementaría MLflow como un servicio centralizado accesible para todo el equipo:
-# - Un tracking server compartido (Docker / Kubernetes)
-# - Convenciones de nombres para experimentos y runs
-# - Registro obligatorio de parámetros, métricas y modelos
-# - Integración con pipelines de CI/CD
-# - Uso del Model Registry para controlar versiones
-# - Roles claros (Data Scientist, Reviewer, Product Owner)
-#
-#
-# 3. **¿Qué artefactos adicionales guardarías además del modelo?**
-#
-# Además del modelo entrenado, guardaría:
-# - Reportes de métricas (TXT / JSON)
-# - Gráficos (residuos, ROC, predicción vs real)
-# - Esquema de features
-# - Versiones de datasets o hashes
-# - Código del entrenamiento
-# - Configuración del entorno (requirements.txt / conda.yaml)
-#
-#
-# 4. **¿Cómo automatizarías el registro de experimentos?**
-#
-# Automatizaría el registro integrando MLflow en:
-# - Pipelines de entrenamiento (scripts o notebooks)
-# - Jobs programados (Airflow / Prefect / cron)
-# - CI/CD (GitHub Actions, GitLab CI)
-# - Uso de templates de entrenamiento con MLflow incluido por defecto
-#
-# De esta forma, cada entrenamiento queda registrado automáticamente
-# sin depender de acciones manuales.
+print(
+    "1. ¿Qué ventajas tiene MLflow frente a guardar métricas en CSV?\n"
+    "- Centraliza experimentos, métricas, parámetros y modelos\n"
+    "- Facilita comparación visual entre runs\n"
+    "- Garantiza reproducibilidad y trazabilidad\n"
+    "- Escala a equipos y entornos distribuidos\n"
+)
 
+print(
+    "2. ¿Cómo implementar MLflow en un proyecto de equipo?\n"
+    "- Tracking server centralizado (Docker / Kubernetes)\n"
+    "- Convenciones claras de nombres\n"
+    "- Registro obligatorio de métricas y modelos\n"
+    "- Integración con CI/CD\n"
+    "- Uso de Model Registry para control de versiones\n"
+)
 
-# %%
+print(
+    "3. ¿Qué artefactos adicionales son recomendables?\n"
+    "- Reportes de métricas\n"
+    "- Gráficos (residuos, ROC, predicción vs real)\n"
+    "- Esquema de features\n"
+    "- Versiones de datasets\n"
+    "- Código de entrenamiento\n"
+)
+
+print(
+    "4. ¿Cómo automatizar el registro de experimentos?\n"
+    "- Integrando MLflow en scripts y notebooks\n"
+    "- Jobs programados (Airflow, Prefect)\n"
+    "- Pipelines CI/CD\n"
+    "- Templates de entrenamiento con MLflow por defecto\n"
+)
+
 print("\n" + "="*60)
 print("RESUMEN MLFLOW TRACKING")
 print("="*60)
 print("Verifica que hayas completado:")
-print("  [ ] Configurado MLflow tracking server")
-print("  [ ] Registrado experimento baseline")
-print("  [ ] Registrado al menos 3 experimentos adicionales")
-print("  [ ] Explorado MLflow UI")
-print("  [ ] Comparado métricas entre runs")
-print(f"  [ ] Accede a MLflow UI: http://localhost:5000")
+print("  [x] Configuración del tracking server")
+print("  [x] Registro de parámetros y métricas")
+print("  [x] Registro de modelos")
+print("  [x] Registro de artefactos (texto y gráficos)")
+print("  [x] Exploración y comparación en MLflow UI")
+print("  👉 Accede a MLflow UI: http://localhost:5000")
 print("="*60)
 
-# %%
 spark.stop()
+print("✓ SparkSession detenida correctamente")

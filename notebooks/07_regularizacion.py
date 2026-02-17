@@ -1,24 +1,7 @@
-# %% [markdown]
-# # Notebook 07: Regularización L1, L2 y ElasticNet
-#
-# **Sección 14**: Prevención de overfitting con regularización
-#
-# **Objetivo**: Comparar Ridge (L2), Lasso (L1) y ElasticNet
-#
-# ## Conceptos clave:
-# - **Ridge (L2)**: regParam > 0, elasticNetParam = 0
-#   - Penaliza coeficientes grandes, NO los elimina
-# - **Lasso (L1)**: regParam > 0, elasticNetParam = 1
-#   - Puede eliminar features (coeficientes = 0)
-# - **ElasticNet**: regParam > 0, elasticNetParam ∈ (0, 1)
-#   - Combinación de L1 y L2
-#
-# ## Actividades:
-# 1. Entrenar modelos con diferentes regularizaciones
-# 2. Comparar resultados
-# 3. Identificar el mejor modelo
+# ============================================================
+# NOTEBOOK 07: Regularización L1, L2 y ElasticNet
+# ============================================================
 
-# %%
 from pyspark.sql import SparkSession
 from pyspark.ml.regression import LinearRegression
 from pyspark.ml.evaluation import RegressionEvaluator
@@ -29,24 +12,30 @@ from pyspark.ml import Pipeline, PipelineModel
 from delta import configure_spark_with_delta_pip
 from pyspark.ml.feature import VectorAssembler
 import numpy as np
+import pandas as pd
 
-# %%
-# Configurar SparkSession
+# ------------------------------------------------------------
+# Inicialización de Spark
+# ------------------------------------------------------------
+
 builder = (
     SparkSession.builder
-    .appName("SECOP_EDA")
+    .appName("SECOP_Feature_Engineering")
     .master("spark://spark-master:7077")
-    .config("spark.executor.memory", "2g")
     .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
     .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
 )
 
 spark = configure_spark_with_delta_pip(builder).getOrCreate()
 
-print(f"Spark Version: {spark.version}")
+print("✓ Spark inicializado correctamente")
+print(f"  - Spark Version : {spark.version}")
+print(f"  - Spark Master  : {spark.sparkContext.master}")
 
-# %%
-# Cargar datos
+# ------------------------------------------------------------
+# Carga de datos
+# ------------------------------------------------------------
+
 df = spark.read.parquet("/opt/spark-data/processed/secop_ml_ready.parquet")
 df = df.withColumnRenamed("valor_del_contrato_num", "label") \
        .withColumnRenamed("features_pca", "features") \
@@ -57,72 +46,101 @@ train, test = df.randomSplit([0.7, 0.3], seed=42)
 print(f"Train: {train.count():,}")
 print(f"Test: {test.count():,}")
 
-# %%
-# RETO 1: Entender la Regularización
+# ------------------------------------------------------------
+# RETO 1: ENTENDER LA REGULARIZACIÓN
+# ------------------------------------------------------------
 
-# Pregunta conceptual:
-# ¿Por qué necesitamos regularización?
+print("\n" + "-"*60)
+print("RETO 1: ENTENDER LA REGULARIZACIÓN")
+print("-"*60)
 
-# Escenario:
-# R² train = 0.95
-# R² test  = 0.45
+print(
+    "\nPregunta conceptual:\n"
+    "¿Por qué necesitamos regularización?\n"
+)
 
-# Respuesta:
+print(
+    "Escenario observado:\n"
+    "- R² Train = 0.95\n"
+    "- R² Test  = 0.45\n"
+)
 
-# El escenario indica:
-# - A) El modelo está underfitting
-# - B) El modelo está overfitting
-# - C) El modelo es perfecto
-# - D) Necesitas más features
-# ✅ Opción B) El modelo está OVERFITTING
+print(
+    "\nOpciones:\n"
+    "A) El modelo está underfitting\n"
+    "B) El modelo está overfitting\n"
+    "C) El modelo es perfecto\n"
+    "D) Necesitas más features\n"
+)
 
-# Explicación:
-# El modelo se ajusta excesivamente a los datos de entrenamiento,
-# capturando ruido y patrones específicos del train que no se
-# generalizan a datos nuevos (test).
+print("Respuesta correcta:")
+print("✅ Opción B) El modelo está OVERFITTING")
 
-# Evidencia clara de overfitting:
-# - Desempeño muy alto en train (R² = 0.95)
-# - Caída fuerte en test (R² = 0.45)
+print(
+    "\nExplicación:\n"
+    "El modelo se ajusta excesivamente a los datos de entrenamiento,\n"
+    "capturando ruido y patrones específicos del train que no se\n"
+    "generalizan a datos nuevos (test)."
+)
 
-# ¿Cómo ayuda la regularización en este caso?
-#
-# La regularización:
-# - Penaliza coeficientes muy grandes
-# - Reduce la complejidad del modelo
-# - Evita que el modelo dependa excesivamente de pocas features
-# - Obliga al modelo a aprender patrones más generales
-#
-# En regresión lineal:
-# - L2 (Ridge) reduce la magnitud de los coeficientes
-# - L1 (Lasso) puede llevar coeficientes a cero (selección de features)
-#
-# Resultado esperado al aplicar regularización:
-# - R² train ↓ ligeramente
-# - R² test ↑
-# - Mejor capacidad de generalización
-#
-# Conclusión:
-# La regularización es clave para controlar el overfitting
-# y mejorar el desempeño del modelo en datos no vistos.
+print(
+    "\nEvidencia clara de overfitting:\n"
+    "- Desempeño muy alto en train (R² = 0.95)\n"
+    "- Caída fuerte en test  (R² = 0.45)"
+)
 
+print(
+    "\n¿Cómo ayuda la regularización?\n"
+    "- Penaliza coeficientes muy grandes\n"
+    "- Reduce la complejidad del modelo\n"
+    "- Evita dependencia excesiva de pocas features\n"
+    "- Obliga al modelo a aprender patrones más generales"
+)
 
-# %%
-# RETO 2: Configurar el Evaluador
+print(
+    "\nTipos de regularización en regresión:\n"
+    "- L2 (Ridge): Reduce la magnitud de los coeficientes\n"
+    "- L1 (Lasso): Puede llevar coeficientes a cero (selección de features)"
+)
 
-# Objetivo:
-# Crear un evaluador para comparar modelos de regresión
+print(
+    "\nResultado esperado al aplicar regularización:\n"
+    "- R² Train ↓ ligeramente\n"
+    "- R² Test  ↑\n"
+    "- Mejor capacidad de generalización"
+)
 
-# Métrica elegida: RMSE
+print(
+    "\nConclusión:\n"
+    "La regularización es clave para controlar el overfitting\n"
+    "y mejorar el desempeño del modelo en datos no vistos."
+)
 
-# Justificación:
-# - RMSE penaliza más los errores grandes
-# - Es especialmente útil cuando errores grandes son más costosos
-#   (ej. sobre/infraestimar valores de contratos)
-# - Mantiene las mismas unidades de la variable objetivo,
-#   lo que facilita interpretación en términos de negocio
+# ------------------------------------------------------------
+# RETO 2: CONFIGURAR EL EVALUADOR
+# ------------------------------------------------------------
 
-from pyspark.ml.evaluation import RegressionEvaluator
+print("\n" + "-"*60)
+print("RETO 2: CONFIGURAR EL EVALUADOR")
+print("-"*60)
+
+print(
+    "\nObjetivo:\n"
+    "Crear un evaluador para comparar modelos de regresión."
+)
+
+print(
+    "\nMétrica elegida: RMSE\n"
+)
+
+print(
+    "Justificación:\n"
+    "- RMSE penaliza más los errores grandes\n"
+    "- Es útil cuando errores grandes son más costosos\n"
+    "  (ej. sobre/infraestimar valores de contratos)\n"
+    "- Mantiene las mismas unidades de la variable objetivo,\n"
+    "  facilitando la interpretación para negocio"
+)
 
 evaluator = RegressionEvaluator(
     labelCol="label",
@@ -130,46 +148,64 @@ evaluator = RegressionEvaluator(
     metricName="rmse"
 )
 
-print("✓ Evaluador configurado correctamente")
+print("\n✓ Evaluador configurado correctamente")
 print(f"  • Métrica seleccionada: {evaluator.getMetricName()}")
 
-# Reflexión:
-#
-# ¿Cambiarías esta métrica?
-#
-# - Usaría MAE si:
-#   * Todos los errores tienen el mismo impacto
-#   * Quiero una métrica más robusta a outliers
-#
-# - Usaría R² si:
-#   * Quiero comparar capacidad explicativa entre modelos
-#   * El objetivo es análisis y no solo predicción
-#
-# En este proyecto:
-# ✔️ RMSE es una buena métrica principal
-# ✔️ MAE y R² pueden usarse como métricas complementarias
+print(
+    "\nReflexión sobre métricas alternativas:\n"
+    "- Usaría MAE si:\n"
+    "  • Todos los errores tienen el mismo impacto\n"
+    "  • Quiero una métrica más robusta a outliers\n\n"
+    "- Usaría R² si:\n"
+    "  • Quiero comparar capacidad explicativa entre modelos\n"
+    "  • El objetivo es análisis y no solo predicción"
+)
+
+print(
+    "\nDecisión en este proyecto:\n"
+    "✔️ RMSE como métrica principal\n"
+    "✔️ MAE y R² como métricas complementarias"
+)
 
 
-# %%
-# RETO 3: Experimento de Regularización
+# ------------------------------------------------------------
+# RETO 3: EXPERIMENTO DE REGULARIZACIÓN
+# ------------------------------------------------------------
 
-from pyspark.ml.regression import LinearRegression
+print("\n" + "-"*60)
+print("RETO 3: EXPERIMENTO DE REGULARIZACIÓN")
+print("-"*60)
 
-# 1. Definir valores de regularización a probar
-# regParam = lambda (fuerza de regularización)
+print(
+    "\nObjetivo del experimento:\n"
+    "Evaluar cómo diferentes configuraciones de regularización\n"
+    "afectan el desempeño del modelo y su capacidad de generalización."
+)
+
+# ------------------------------------------------------------
+# 1. Definir valores de regularización
+# ------------------------------------------------------------
+
 reg_params = [0.0, 0.01, 0.1, 1.0, 10.0]
-
-# elasticNetParam = alpha (tipo de regularización)
-# 0.0 = Ridge (L2)
-# 0.5 = ElasticNet
-# 1.0 = Lasso (L1)
 elastic_params = [0.0, 0.5, 1.0]
 
-print(f"Combinaciones totales a entrenar: {len(reg_params) * len(elastic_params)}")
+print(
+    "\nParámetros evaluados:\n"
+    f"- Valores de regParam (λ): {reg_params}\n"
+    f"- Valores de elasticNetParam (α): {elastic_params}\n"
+)
 
-# %%
+print(
+    f"Combinaciones totales a entrenar: {len(reg_params) * len(elastic_params)}"
+)
+
+# ------------------------------------------------------------
 # 2. Bucle de experimentación
+# ------------------------------------------------------------
+
 resultados = []
+
+print("\n=== INICIO DE EXPERIMENTOS ===")
 
 for reg in reg_params:
     for elastic in elastic_params:
@@ -186,10 +222,10 @@ for reg in reg_params:
         model = lr.fit(train)
 
         # Predicciones en test
-        predictions = model.transform(test)
+        preds = model.transform(test)
 
         # Evaluar RMSE en test
-        rmse_test = evaluator.evaluate(predictions)
+        rmse_test = evaluator.evaluate(preds)
 
         # Identificar tipo de regularización
         if reg == 0.0:
@@ -201,13 +237,12 @@ for reg in reg_params:
         else:
             reg_type = "ElasticNet"
 
-        # Guardar resultados
         resultados.append({
+            "tipo": reg_type,
             "regParam": reg,
             "elasticNetParam": elastic,
-            "tipo": reg_type,
-            "rmse_test": rmse_test,
             "rmse_train": model.summary.rootMeanSquaredError,
+            "rmse_test": rmse_test,
             "r2_train": model.summary.r2
         })
 
@@ -218,43 +253,44 @@ for reg in reg_params:
             f"RMSE Test: ${rmse_test:,.2f}"
         )
 
-# %%
-# 3. Convertir resultados a DataFrame para análisis
-import pandas as pd
+# ------------------------------------------------------------
+# RETO 4: ANALIZAR RESULTADOS
+# ------------------------------------------------------------
 
-results_df = pd.DataFrame(resultados)
-print("\n=== RESUMEN DE RESULTADOS ===")
-results_df.sort_values("rmse_test").head(10)
+print("\n" + "-"*60)
+print("RETO 4: ANÁLISIS DE RESULTADOS")
+print("-"*60)
 
-
-# %%
-# RETO 4: Analizar Resultados
-
-import pandas as pd
-
-# 1. Convertir resultados a DataFrame de pandas
 df_resultados = pd.DataFrame(resultados)
 
-print("\n=== RESULTADOS COMPLETOS DE LOS MODELOS ===")
-print(df_resultados.sort_values("rmse_test").to_string(index=False))
+print("\n=== RESULTADOS COMPLETOS (ORDENADOS POR RMSE TEST) ===")
+print(
+    df_resultados
+    .sort_values("rmse_test")
+    .to_string(index=False)
+)
 
-# %%
-# 2. Identificar el mejor modelo (menor RMSE en test)
+# ------------------------------------------------------------
+# Identificar mejor modelo
+# ------------------------------------------------------------
+
 mejor_modelo = df_resultados.loc[df_resultados["rmse_test"].idxmin()]
 
-print("\n" + "=" * 60)
+print("\n" + "="*60)
 print("MEJOR MODELO SEGÚN RMSE EN TEST")
-print("=" * 60)
+print("="*60)
 print(f"Tipo de regularización: {mejor_modelo['tipo']}")
 print(f"regParam (λ):          {mejor_modelo['regParam']}")
 print(f"elasticNetParam (α):   {mejor_modelo['elasticNetParam']}")
 print(f"RMSE Train:            ${mejor_modelo['rmse_train']:,.2f}")
 print(f"RMSE Test:             ${mejor_modelo['rmse_test']:,.2f}")
 print(f"R² Train:              {mejor_modelo['r2_train']:.4f}")
-print("=" * 60)
+print("="*60)
 
-# %%
-# 3. Comparar RMSE train vs test para detectar overfitting
+# ------------------------------------------------------------
+# Análisis de estabilidad: gap train vs test
+# ------------------------------------------------------------
+
 df_resultados["rmse_gap"] = df_resultados["rmse_test"] - df_resultados["rmse_train"]
 
 print("\n=== MODELOS ORDENADOS POR GAP (TEST - TRAIN) ===")
@@ -265,38 +301,56 @@ print(
     .to_string(index=False)
 )
 
-# %%
-# 4. Análisis conceptual (responde en markdown o comentario)
+# ------------------------------------------------------------
+# Reflexión conceptual
+# ------------------------------------------------------------
 
-# ¿El mejor modelo es siempre el de menor RMSE en test?
-# NO necesariamente.
-#
-# Otros factores a considerar:
-# - Diferencia entre RMSE train y test (estabilidad / generalización)
-# - Simplicidad del modelo (menor regularización vs complejidad)
-# - Interpretabilidad (Lasso elimina features, Ridge no)
-# - Robustez frente a nuevos datos
-# - Coherencia con el negocio
-#
-# En práctica, suele preferirse:
-# ✔ Un modelo ligeramente peor en RMSE pero más estable
-# ✔ Un modelo más simple y explicable
+print(
+    "\nReflexión clave:\n"
+    "¿El mejor modelo es siempre el de menor RMSE en test?\n"
+    "❌ NO necesariamente.\n"
+)
+
+print(
+    "Otros factores a considerar:\n"
+    "- Diferencia entre RMSE train y test (estabilidad)\n"
+    "- Simplicidad del modelo\n"
+    "- Interpretabilidad (Lasso vs Ridge)\n"
+    "- Robustez frente a nuevos datos\n"
+    "- Coherencia con el negocio\n"
+)
+
+print(
+    "\nDecisión práctica habitual:\n"
+    "✔ Preferir un modelo ligeramente peor en RMSE pero más estable\n"
+    "✔ Priorizar modelos simples, explicables y consistentes\n"
+)
 
 
-# %%
-# RETO 5: Comparar Overfitting
-#
-# Objetivo:
-# Analizar la brecha entre RMSE de train y RMSE de test
-# para identificar overfitting y underfitting según la regularización.
+# ------------------------------------------------------------
+# RETO 5: COMPARAR OVERFITTING
+# ------------------------------------------------------------
 
-import numpy as np
+print("\n" + "-"*60)
+print("RETO 5: COMPARAR OVERFITTING")
+print("-"*60)
 
-# Definir un umbral práctico para considerar overfitting
-# (ajústalo según escala del problema)
+print(
+    "\nObjetivo del análisis:\n"
+    "Evaluar la brecha entre RMSE de entrenamiento y RMSE de prueba\n"
+    "para identificar escenarios de overfitting, underfitting\n"
+    "y modelos balanceados según la regularización aplicada."
+)
+
+# Umbral práctico para clasificar el gap
 threshold = 0.10 * df_resultados["rmse_test"].mean()
 
-print("\n=== ANÁLISIS DE OVERFITTING (BRECHA TRAIN vs TEST) ===")
+print(
+    f"\nUmbral de referencia para el gap (10% del RMSE promedio): "
+    f"${threshold:,.2f}"
+)
+
+print("\n=== ANÁLISIS MODELO A MODELO ===")
 
 for _, row in df_resultados.iterrows():
     gap = row["rmse_test"] - row["rmse_train"]
@@ -318,9 +372,13 @@ for _, row in df_resultados.iterrows():
         f"Estado: {estado}"
     )
 
-# %%
+# ------------------------------------------------------------
 # Análisis agregado por tipo de regularización
-print("\n=== PROMEDIO DE GAP POR TIPO DE REGULARIZACIÓN ===")
+# ------------------------------------------------------------
+
+print("\n" + "-"*60)
+print("ANÁLISIS AGREGADO POR TIPO DE REGULARIZACIÓN")
+print("-"*60)
 
 gap_por_tipo = (
     df_resultados
@@ -333,36 +391,47 @@ gap_por_tipo = (
 for tipo, gap_mean in gap_por_tipo.items():
     print(f"{tipo:25s} | Gap promedio: ${gap_mean:,.2f}")
 
-# %%
-# Respuestas conceptuales (escribe también en Markdown si lo deseas):
-#
-# 1. ¿Qué regularización reduce más el overfitting?
-#    → Normalmente Ridge (L2) y ElasticNet con λ moderado,
-#      porque reducen la magnitud de los coeficientes sin
-#      eliminar completamente variables relevantes.
-#
-# 2. ¿Hay trade-off entre overfitting y rendimiento?
-#    → Sí. A mayor regularización:
-#       - ↓ Overfitting
-#       - ↑ Bias (riesgo de underfitting)
-#
-# 3. Interpretación de escenarios:
-#    - regParam = 0.0, RMSE_train bajo y RMSE_test alto → Overfitting
-#    - regParam = 10.0, RMSE_train y RMSE_test altos → Underfitting
-#
-# La clave es encontrar un punto intermedio (sweet spot).
+# ------------------------------------------------------------
+# Respuestas conceptuales
+# ------------------------------------------------------------
 
+print(
+    "\nConclusiones conceptuales:\n"
+    "1) ¿Qué regularización reduce mejor el overfitting?\n"
+    "→ Normalmente Ridge (L2) y ElasticNet con λ moderado,\n"
+    "  ya que reducen la magnitud de los coeficientes sin\n"
+    "  eliminar completamente variables relevantes.\n"
+)
 
-# %%
-# RETO 6: Entrenar Modelo Final
-#
-# Objetivo:
-# Entrenar el modelo definitivo usando los mejores hiperparámetros
-# encontrados durante el experimento de regularización.
+print(
+    "2) ¿Existe un trade-off entre overfitting y rendimiento?\n"
+    "→ Sí. A mayor regularización:\n"
+    "   - Disminuye el overfitting\n"
+    "   - Aumenta el sesgo (riesgo de underfitting)\n"
+)
 
-from pyspark.ml.regression import LinearRegression
+print(
+    "3) Interpretación de escenarios típicos:\n"
+    "- regParam = 0.0, RMSE_train bajo y RMSE_test alto → Overfitting\n"
+    "- regParam = 10.0, RMSE_train y RMSE_test altos → Underfitting\n"
+)
 
-# 1. Identificar el mejor modelo (menor RMSE en test)
+print(
+    "\nConclusión clave:\n"
+    "La clave no es maximizar desempeño en train,\n"
+    "sino encontrar un punto intermedio (sweet spot)\n"
+    "que generalice bien a datos no vistos."
+)
+
+# ------------------------------------------------------------
+# RETO 6: ENTRENAR MODELO FINAL
+# ------------------------------------------------------------
+
+print("\n" + "-"*60)
+print("RETO 6: ENTRENAR MODELO FINAL")
+print("-"*60)
+
+# Identificar el mejor modelo según RMSE en test
 mejor_modelo = df_resultados.loc[df_resultados["rmse_test"].idxmin()]
 
 best_reg = mejor_modelo["regParam"]
@@ -371,13 +440,12 @@ best_tipo = mejor_modelo["tipo"]
 
 print("\n=== MEJOR CONFIGURACIÓN ENCONTRADA ===")
 print(f"Tipo de regularización: {best_tipo}")
-print(f"regParam (λ): {best_reg}")
-print(f"elasticNetParam (α): {best_elastic}")
-print(f"RMSE Test: ${mejor_modelo['rmse_test']:,.2f}")
+print(f"regParam (λ):          {best_reg}")
+print(f"elasticNetParam (α):   {best_elastic}")
+print(f"RMSE Test:             ${mejor_modelo['rmse_test']:,.2f}")
 
-# %%
-# 2. Entrenar el modelo final con los mejores hiperparámetros
-print("\nEntrenando modelo final...")
+# Entrenamiento del modelo final
+print("\nEntrenando modelo final con la mejor configuración...")
 
 lr_final = LinearRegression(
     featuresCol="features",
@@ -389,55 +457,56 @@ lr_final = LinearRegression(
 
 modelo_final = lr_final.fit(train)
 
-print("✓ Modelo final entrenado correctamente")
-print(f"  RMSE Train: ${modelo_final.summary.rootMeanSquaredError:,.2f}")
-print(f"  R² Train:   {modelo_final.summary.r2:.4f}")
+print("\n✓ Modelo final entrenado correctamente")
+print(f"RMSE Train: ${modelo_final.summary.rootMeanSquaredError:,.2f}")
+print(f"R² Train:   {modelo_final.summary.r2:.4f}")
 
-# %%
-# 3. Evaluar el modelo final en el set de test
+# Evaluación final en test
 predictions_final = modelo_final.transform(test)
 rmse_final = evaluator.evaluate(predictions_final)
 
 print("\n=== EVALUACIÓN FINAL (TEST) ===")
 print(f"RMSE Test Final: ${rmse_final:,.2f}")
 
-# %%
-# 4. Guardar el modelo entrenado
+# Guardar modelo
 model_path = "/opt/spark-data/processed/regularized_linear_regression_model"
-
 modelo_final.write().overwrite().save(model_path)
 
 print(f"\n✓ Modelo final guardado en: {model_path}")
 
-# %%
-# Conclusión (para documentar en Markdown):
-#
-# - Se seleccionó el modelo con menor RMSE en test
-# - Se redujo el overfitting respecto al modelo sin regularización
-# - El modelo final está listo para:
-#   • scoring batch
-#   • comparación con modelos no lineales
-#   • despliegue productivo
+print(
+    "\nConclusión final del experimento:\n"
+    "- Se seleccionó el modelo con mejor desempeño en test\n"
+    "- Se redujo el overfitting respecto al modelo base\n"
+    "- El modelo está listo para:\n"
+    "  • scoring batch\n"
+    "  • comparación con modelos no lineales\n"
+    "  • despliegue productivo"
+)
 
+# ------------------------------------------------------------
+# RETO BONUS: EFECTO DE LAMBDA (LASSO) EN LOS COEFICIENTES
+# ------------------------------------------------------------
 
-# %%
-# RETO BONUS: Efecto de Lambda en los Coeficientes
-#
-# Objetivo:
-# Analizar cómo el parámetro lambda (regParam) en Lasso (L1)
-# afecta la cantidad de coeficientes que se vuelven exactamente 0.
+print("\n" + "-"*60)
+print("RETO BONUS: EFECTO DE LAMBDA (LASSO) EN LOS COEFICIENTES")
+print("-"*60)
 
-import numpy as np
-from pyspark.ml.regression import LinearRegression
-
-print("\n=== EFECTO DE LAMBDA (LASSO) EN LOS COEFICIENTES ===")
+print(
+    "\nObjetivo del experimento:\n"
+    "Analizar cómo el parámetro lambda (regParam) en Lasso (L1)\n"
+    "afecta la cantidad de coeficientes que se vuelven exactamente 0\n"
+    "y cómo impacta el desempeño del modelo."
+)
 
 reg_values = [0.01, 0.1, 1.0, 10.0]
 
 coef_analysis = []
 
+print("\n=== ENTRENAMIENTO DE MODELOS LASSO ===")
+
 for reg in reg_values:
-    print(f"\nEntrenando Lasso con λ = {reg}")
+    print(f"\nEntrenando modelo Lasso con λ = {reg}")
 
     lr_lasso = LinearRegression(
         featuresCol="features",
@@ -452,10 +521,10 @@ for reg in reg_values:
     # Extraer coeficientes
     coefs = np.array(model_lasso.coefficients)
 
-    # Contar coeficientes ~ 0
+    # Contar coeficientes cercanos a cero
     zeros = np.sum(np.abs(coefs) < 1e-6)
 
-    # Evaluar desempeño
+    # Evaluar desempeño en test
     rmse_test = evaluator.evaluate(model_lasso.transform(test))
 
     coef_analysis.append({
@@ -471,48 +540,69 @@ for reg in reg_values:
         f"RMSE Test: ${rmse_test:,.2f}"
     )
 
-# %%
-# Resumen tabular
-import pandas as pd
+# ------------------------------------------------------------
+# Resumen tabular del efecto de lambda
+# ------------------------------------------------------------
 
 df_coef_analysis = pd.DataFrame(coef_analysis)
 
-print("\n=== RESUMEN EFECTO DE LAMBDA ===")
+print("\n" + "-"*60)
+print("RESUMEN DEL EFECTO DE LAMBDA (LASSO)")
+print("-"*60)
 print(df_coef_analysis.to_string(index=False))
 
-# %%
-# Interpretación (documentar en Markdown):
-#
-# - A mayor λ (regParam), mayor número de coeficientes exactamente 0
-# - Lasso realiza selección automática de features
-# - Modelos con λ alto son más simples pero pueden perder capacidad predictiva
+# ------------------------------------------------------------
+# Interpretación de resultados
+# ------------------------------------------------------------
 
-# %%
-# Pregunta conceptual:
-#
-# ¿Por qué Lasso puede poner coeficientes en 0 y Ridge no?
-#
-# Respuesta (para Markdown):
-#
-# - Lasso (L1) usa una penalización basada en el valor absoluto del coeficiente
-# - Esto genera esquinas en la función de optimización
-# - En esas esquinas, el óptimo puede caer exactamente en 0
-#
-# - Ridge (L2) penaliza el cuadrado del coeficiente
-# - Reduce magnitudes pero rara vez las lleva exactamente a 0
-# - Por eso Ridge NO hace selección de variables explícita
+print(
+    "\nInterpretación de los resultados:\n"
+    "- A mayor valor de λ (regParam), mayor número de coeficientes\n"
+    "  que se vuelven exactamente 0.\n"
+    "- Esto confirma que Lasso realiza selección automática de features.\n"
+    "- Modelos con λ alto son más simples y más interpretables,\n"
+    "  pero pueden perder capacidad predictiva si se elimina\n"
+    "  información relevante."
+)
 
-# %%
+# ------------------------------------------------------------
+# Pregunta conceptual clave
+# ------------------------------------------------------------
+
+print(
+    "\nPregunta conceptual:\n"
+    "¿Por qué Lasso puede llevar coeficientes exactamente a 0\n"
+    "y Ridge no lo hace?"
+)
+
+print(
+    "\nRespuesta:\n"
+    "- Lasso (L1) utiliza una penalización basada en el valor absoluto\n"
+    "  de los coeficientes.\n"
+    "- Esta penalización genera esquinas en la función de optimización.\n"
+    "- En dichas esquinas, el punto óptimo puede caer exactamente en 0,\n"
+    "  anulando completamente una feature.\n\n"
+    "- Ridge (L2) penaliza el cuadrado del coeficiente.\n"
+    "- Reduce la magnitud de los coeficientes de forma continua,\n"
+    "  pero rara vez los lleva exactamente a 0.\n"
+    "- Por esta razón, Ridge NO realiza selección explícita de variables."
+)
+
+# ------------------------------------------------------------
+# Cierre del bloque de regularización
+# ------------------------------------------------------------
+
 print("\n" + "="*60)
-print("RESUMEN REGULARIZACIÓN")
+print("RESUMEN FINAL – REGULARIZACIÓN")
 print("="*60)
-print("Verifica que hayas completado:")
-print("  [ ] Entendido diferencia entre L1, L2 y ElasticNet")
-print("  [ ] Experimentado con múltiples combinaciones")
-print("  [ ] Identificado el mejor modelo")
-print("  [ ] Analizado overfitting vs underfitting")
-print("  [ ] Guardado modelo final")
+print("Verifica que hayas logrado:")
+print("  ✓ Entender la diferencia entre L1, L2 y ElasticNet")
+print("  ✓ Experimentar con múltiples valores de lambda")
+print("  ✓ Observar selección automática de variables con Lasso")
+print("  ✓ Comparar simplicidad vs desempeño")
+print("  ✓ Elegir un modelo alineado con el objetivo del negocio")
 print("="*60)
 
-# %%
+# Detener Spark
 spark.stop()
+print("✓ SparkSession detenida correctamente")
